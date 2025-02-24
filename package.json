@@ -4,6 +4,10 @@
   "description": "Educational Platform",
   "main": "src/main/main.js",
   "scripts": {
+    "dev": "vite",
+    "build": "vite build",
+    "preview": "vite preview",
+    "electron:dev": "vite --config vite.config.js",
     "start": "electron .",
     "test": "echo \\\"Error: no test specified\\\" && exit 1"
   },
@@ -19,5 +23,16 @@
   "bugs": {
     "url": "https://github.com/Pogo-Bash/CongressionalAppChallenge2025/issues"
   },
-  "homepage": "https://github.com/Pogo-Bash/CongressionalAppChallenge2025#readme"
+  "homepage": "https://github.com/Pogo-Bash/CongressionalAppChallenge2025#readme",
+  "dependencies": {
+    "@tailwindcss/vite": "^4.0.8"
+  },
+  "devDependencies": {
+    "@vitejs/plugin-react": "^4.3.4",
+    "autoprefixer": "^10.4.20",
+    "postcss": "^8.5.3",
+    "tailwindcss": "^4.0.8",
+    "vite": "^6.1.1",
+    "vite-plugin-electron": "^0.29.0"
+  }
 }
