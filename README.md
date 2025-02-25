@@ -169,8 +169,8 @@ This project is licensed under the MIT License - see the [LICENSE](LICENSE) file
 
 ## 👥 Team
 
-- jmwalker8 
-- Pogo-Bash 
+- https://github.com/jmwalker8
+- https://github.com/Pogo-Bash 
 
 ## 🙏 Acknowledgments
 
