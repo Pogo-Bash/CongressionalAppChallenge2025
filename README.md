@@ -100,9 +100,9 @@ This project is licensed under the MIT License - see the [LICENSE](LICENSE) file
 
 ## 👥 Team
 
-- jmwalker8 - AI/Curriculum Lead
-- [Developer 2] - Computer Vision Specialist
-- jmwalker8/Pogo-Bash - UI/UX & Data Visualization
+- jmwalker8 
+- Pogo-Bash 
+
 
 ## 🙏 Acknowledgments
 
