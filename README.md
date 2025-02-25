@@ -53,6 +53,40 @@ Curriq helps students excel by creating personalized learning paths based on the
 - **D3.js/Chart.js:** Data visualization
 - **Google Classroom API:** Educational data integration
 
+## 📱 Mobile App
+
+Curriq is available both as a desktop application and a mobile app to provide a seamless learning experience across all your devices.
+
+### Mobile Features
+
+- Cross-platform support for iOS and Android devices
+- Synchronize your curriculum and progress across devices
+- Simplified focus tracking using the mobile device's camera
+- Mobile-optimized interface for studying on the go
+- Offline mode for studying without internet connection
+
+### Mobile Development
+
+The mobile version of Curriq is built using:
+- **Cordova:** For wrapping the application and accessing native device features
+- **HTML5/CSS3/JavaScript:** Core web technologies for the interface
+- **MediaPipe:** Mobile-optimized computer vision for focus tracking
+
+### Building the Mobile App
+
+```bash
+# Install Cordova globally if not already installed
+npm install -g cordova
+
+# Build and run on Android
+npm run mobile:android
+
+# Build and run on iOS (macOS only)
+npm run mobile:ios
+
+# Test in browser
+npm run mobile:browser
+
 ## 👩‍💻 Development
 
 ### Branch Strategy
