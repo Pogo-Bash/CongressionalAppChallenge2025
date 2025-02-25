@@ -2,7 +2,6 @@
 
 Curriq helps students excel by creating personalized learning paths based on their actual classroom assignments and optimizing their study habits through focus tracking.
 
-
 ## 🚀 Features
 
 - **Smart Curriculum Generation:** Analyzes your Google Classroom assignments, tests, and quizzes to create tailored study plans
@@ -20,20 +19,24 @@ Curriq helps students excel by creating personalized learning paths based on the
 ## 🔧 Installation
 
 1. Clone the repository
+
    ```
    git clone https://github.com/yourusername/curriculum-ai.git
    cd curriq
    ```
 
 2. Install dependencies
+
    ```
    npm install
    ```
 
 3. Configure environment variables
+
    ```
    cp .env.example .env
    ```
+
    Edit `.env` with your Firebase and Google API credentials
 
 4. Start the development server
@@ -55,6 +58,7 @@ Curriq helps students excel by creating personalized learning paths based on the
 ### Branch Strategy
 
 We use a simplified GitFlow workflow:
+
 - `main`: Production-ready code
 - `develop`: Integration branch
 - Feature branches: `feature/feature-name`
@@ -96,11 +100,12 @@ This project is licensed under the MIT License - see the [LICENSE](LICENSE) file
 
 ## 👥 Team
 
-- jmwalker8 - AI/Curriculum Lead
-- [Developer 2] - Computer Vision Specialist
-- jmwalker8/Pogo-Bash - UI/UX & Data Visualization
+- jmwalker8 
+- Pogo-Bash 
+
 
 ## 🙏 Acknowledgments
 
 - [Congress App Challenge](https://www.congressionalappchallenge.us/) for inspiring this project
 - All the educators and students who provided feedback during development
+
