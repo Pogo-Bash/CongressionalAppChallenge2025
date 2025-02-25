@@ -2,6 +2,9 @@
 
 Curriq helps students excel by creating personalized learning paths based on their actual classroom assignments and optimizing their study habits through focus tracking.
 
+![Version](https://img.shields.io/badge/version-0.1.0-blue)
+![License](https://img.shields.io/badge/license-MIT-green)
+
 ## 🚀 Features
 
 - **Smart Curriculum Generation:** Analyzes your Google Classroom assignments, tests, and quizzes to create tailored study plans
@@ -15,14 +18,15 @@ Curriq helps students excel by creating personalized learning paths based on the
 - Node.js (v16+)
 - npm or yarn
 - Google account with access to Google Classroom
+- For mobile development: Android Studio and/or Xcode
 
 ## 🔧 Installation
 
 1. Clone the repository
 
    ```
-   git clone https://github.com/yourusername/curriculum-ai.git
-   cd curriq
+   git clone https://github.com/Pogo-Bash/CongressionalAppChallenge2025.git
+   cd CongressionalAppChallenge2025
    ```
 
 2. Install dependencies
@@ -39,7 +43,7 @@ Curriq helps students excel by creating personalized learning paths based on the
 
    Edit `.env` with your Firebase and Google API credentials
 
-4. Start the development server
+4. Start the desktop development server
    ```
    npm run dev
    ```
@@ -47,6 +51,7 @@ Curriq helps students excel by creating personalized learning paths based on the
 ## 🏗️ Technology Stack
 
 - **Electron:** Cross-platform desktop application framework
+- **Cordova:** Mobile application framework
 - **TensorFlow.js:** Machine learning for curriculum analysis and recommendation
 - **OpenCV:** Computer vision for focus and posture tracking
 - **Firebase:** Authentication and data storage
@@ -86,8 +91,36 @@ npm run mobile:ios
 
 # Test in browser
 npm run mobile:browser
+```
+
+### Mobile-Desktop Sync
+
+Your study data automatically synchronizes between mobile and desktop applications when you're online, allowing you to:
+- Start a study session on desktop and continue on mobile
+- Review focus analytics across all your devices
+- Share curriculum with classmates regardless of platform
 
 ## 👩‍💻 Development
+
+### Project Structure
+
+```
+curriculum-ai/
+├── desktop/               # Electron desktop app
+│   ├── main.js            # Electron main process
+│   ├── preload.js         # Preload script for secure API access
+│   └── src/               # Renderer process code
+├── mobile/                # Cordova mobile app
+│   ├── config.xml         # Cordova configuration
+│   ├── platforms/         # Platform-specific code
+│   └── www/               # Web assets for mobile
+├── shared/                # Shared code between platforms
+│   ├── js/                # Common JavaScript modules
+│   ├── css/               # Shared styles
+│   └── assets/            # Images and other assets
+├── tests/                 # Test files
+└── docs/                  # Documentation
+```
 
 ### Branch Strategy
 
@@ -105,19 +138,21 @@ We use a simplified GitFlow workflow:
 3. Submit a pull request to `develop`
 4. After review, your changes will be merged
 
-## 🔍 Project Structure
+### Build Scripts
 
-```
-curriq/
-├── assets/            # Static assets
-├── src/
-│   ├── main/          # Electron main process
-│   ├── renderer/      # Electron renderer process
-│   ├── models/        # AI/ML models
-│   ├── services/      # Business logic and API integration
-│   └── shared/        # Shared utilities and types
-├── tests/             # Test files
-└── docs/              # Documentation
+```bash
+# Desktop development
+npm run desktop:dev        # Start Electron in development mode
+npm run desktop:build      # Build desktop application
+
+# Mobile development
+npm run mobile:dev         # Start mobile development server
+npm run mobile:build       # Build mobile web assets
+npm run mobile:android     # Build and run on Android
+npm run mobile:browser     # Test in browser
+
+# Shared code
+npm run copy-shared        # Copy shared code to both platforms
 ```
 
 ## 🤝 Contributing
@@ -137,8 +172,7 @@ This project is licensed under the MIT License - see the [LICENSE](LICENSE) file
 - jmwalker8 
 - Pogo-Bash 
 
-
 ## 🙏 Acknowledgments
 
-- [Congress App Challenge](https://www.congressionalappchallenge.us/) for inspiring this project
+- [Congressional App Challenge](https://www.congressionalappchallenge.us/) for inspiring this project
 - All the educators and students who provided feedback during development
