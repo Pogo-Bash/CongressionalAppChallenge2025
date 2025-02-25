@@ -16,6 +16,7 @@
     "cordova-android": "^13.0.0",
     "cordova-browser": "^7.0.0",
     "cordova-ios": "^7.1.1",
+    "cordova-plugin-camera": "^8.0.0",
     "fs-extra": "^11.3.0"
   },
   "cordova": {
@@ -23,6 +24,11 @@
       "android",
       "ios",
       "browser"
-    ]
+    ],
+    "plugins": {
+      "cordova-plugin-camera": {
+        "ANDROIDX_CORE_VERSION": "1.6.+"
+      }
+    }
   }
 }

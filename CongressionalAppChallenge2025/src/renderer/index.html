@@ -2,41 +2,95 @@
 <html>
   <head>
     <meta charset="UTF-8" />
-    <title>Electron</title>
+    <title>Curriq</title>
     <!-- https://developer.mozilla.org/en-US/docs/Web/HTTP/CSP -->
     <meta
       http-equiv="Content-Security-Policy"
-      content="default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data:"
+      content="default-src 'self'; script-src 'self' 'unsafe-eval' https://cdn.jsdelivr.net; style-src 'self' 'unsafe-inline'; img-src 'self' data:; media-src 'self' blob:; connect-src 'self' https://cdn.jsdelivr.net"
     />
-
     <link href="./assets/main.css" type="text/css" rel="stylesheet" />
   </head>
-
   <body>
     <div id="app">
-      <img alt="logo" class="logo" src="./assets/electron.svg" />
-      <div class="creator">Powered by electron-vite</div>
-      <div class="text">
-        Build an Electron app with
-        <span class="js">JavaScript</span>
-      </div>
-      <p class="tip">Please try pressing <code>F12</code> to open the devTool</p>
-      <div class="actions">
-        <div class="action">
-          <a href="https://electron-vite.org/" target="_blank" rel="noreferrer">Documentation</a>
-        </div>
-        <div class="action">
-          <a id="ipcHandler" target="_blank" rel="noreferrer">Send IPC</a>
-        </div>
-      </div>
-
-      <ul class="versions">
-        <li class="electron-version"></li>
-        <li class="chrome-version"></li>
-        <li class="node-version"></li>
-      </ul>
+      <header>
+        <img alt="logo" class="logo" src="./assets/electron.svg">
+        <h1>Curriq - AI Study Assistant</h1>
+      </header>
+      
+      <nav class="main-nav">
+        <button class="nav-btn active" data-section="dashboard">Dashboard</button>
+        <button class="nav-btn" data-section="focus">Focus Tracking</button>
+        <button class="nav-btn" data-section="curriculum">Curriculum</button>
+        <button class="nav-btn" data-section="settings">Settings</button>
+      </nav>
+      
+      <main>
+        <!-- Dashboard Section -->
+        <section id="dashboard-section" class="content-section active">
+          <h2>Study Dashboard</h2>
+          <div class="dashboard-stats">
+            <div class="stat-card">
+              <h3>Study Time</h3>
+              <p class="stat-value">0h</p>
+            </div>
+            <div class="stat-card">
+              <h3>Average Focus</h3>
+              <p class="stat-value">0%</p>
+            </div>
+            <div class="stat-card">
+              <h3>Modules Complete</h3>
+              <p class="stat-value">0</p>
+            </div>
+          </div>
+        </section>
+        
+        <!-- Focus Tracking Section -->
+        <section id="focus-section" class="content-section">
+          <h2>Focus Tracking</h2>
+          <div id="focus-tracking-container" class="focus-container">
+            <!-- Focus tracking UI will be inserted here by JavaScript -->
+          </div>
+        </section>
+        
+        <!-- Curriculum Section -->
+        <section id="curriculum-section" class="content-section">
+          <h2>Your Curriculum</h2>
+          <div class="curriculum-content">
+            <p>Connect your Google Classroom account to generate personalized curricula.</p>
+            <button id="connect-classroom">Connect Google Classroom</button>
+          </div>
+        </section>
+        
+        <!-- Settings Section -->
+        <section id="settings-section" class="content-section">
+          <h2>Settings</h2>
+          <div class="settings-form">
+            <div class="setting-group">
+              <label for="camera-select">Camera</label>
+              <select id="camera-select">
+                <option value="default">Default Camera</option>
+              </select>
+            </div>
+            <div class="setting-group">
+              <label>Focus Tracking</label>
+              <label class="toggle">
+                <input type="checkbox" id="enable-focus" checked>
+                <span class="toggle-slider"></span>
+                Enable Focus Tracking
+              </label>
+            </div>
+          </div>
+        </section>
+      </main>
+      
+      <footer>
+        <ul class="versions">
+          <li class="electron-version"></li>
+          <li class="chrome-version"></li>
+          <li class="node-version"></li>
+        </ul>
+      </footer>
     </div>
-
     <script type="module" src="./src/renderer.js"></script>
   </body>
 </html>

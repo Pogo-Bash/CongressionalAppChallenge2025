@@ -54,6 +54,17 @@ app.whenReady().then(() => {
 
   createWindow()
 
+  // Handle camera permission request 
+
+  ipcMain.handle('request-camera-permission', async () => {
+    try {
+      const status = await mainWindow.webContents.getMediaSourceId('camera');
+      return { success: true, status }; 
+    } catch (error) {
+      return { success: false, error: error.message };
+    }
+  });
+
   app.on('activate', function () {
     // On macOS it's common to re-create a window in the app when the
     // dock icon is clicked and there are no other windows open.

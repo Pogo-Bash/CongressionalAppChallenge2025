@@ -1,4 +1,10 @@
 What you did in your latest push: 
 
+1. Installed and implemented TensorFlow features. Started updating the app layout as a test. 
+
 What we need to do: 
+
+Issues: 
+
+1. Getting Versions API not available in the Console.
 
