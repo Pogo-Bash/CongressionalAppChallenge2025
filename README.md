@@ -53,7 +53,7 @@ Curriq helps students excel by creating personalized learning paths based on the
 - **Electron:** Cross-platform desktop application framework
 - **Cordova:** Mobile application framework
 - **TensorFlow.js:** Machine learning for curriculum analysis and recommendation
-- **OpenCV:** Computer vision for focus and posture tracking
+- **MediaPipe:** Computer vision for focus and posture tracking
 - **Firebase:** Authentication and data storage
 - **D3.js/Chart.js:** Data visualization
 - **Google Classroom API:** Educational data integration
