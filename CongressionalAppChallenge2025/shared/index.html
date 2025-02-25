@@ -1,0 +1,41 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self'">
+  <title>CurriculumAI</title>
+  <link rel="stylesheet" href="./css/common.css">
+  <link rel="stylesheet" href="./css/styles.css">
+</head>
+<body>
+  <div class="container">
+    <h1>CurriculumAI</h1>
+    
+    <div class="platform-indicator">
+      <div id="desktop-indicator" class="platform-badge">Desktop</div>
+      <div id="mobile-indicator" class="platform-badge">Mobile</div>
+    </div>
+    
+    <div class="content">
+      <div class="card">
+        <h2>Study Stats</h2>
+        <div id="stats-container">
+          <!-- Stats will be loaded here -->
+        </div>
+      </div>
+      
+      <div class="card">
+        <h2>Focus Tracker</h2>
+        <div id="focus-container">
+          <!-- Focus tracking UI will be loaded here -->
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <script type="module" src="./js/platform.js"></script>
+<script type="module" src="./js/app.js"></script>
+ 
+</body>
+</html>

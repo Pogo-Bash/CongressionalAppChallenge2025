@@ -10,12 +10,22 @@
     "lint": "eslint --cache .",
     "start": "electron-vite preview",
     "dev": "electron-vite dev",
+    "cordova:dev": "vite build --config vite.config.cordova.js && cordova run browser",
+    "cordova:android": "vite build --config vite.config.cordova.js && cordova run android", 
+    "cordova:ios": "vite build --config vite.config.cordova.js && cordova run ios",
     "build": "electron-vite build",
     "postinstall": "electron-builder install-app-deps",
     "build:unpack": "npm run build && electron-builder --dir",
     "build:win": "npm run build && electron-builder --win",
     "build:mac": "npm run build && electron-builder --mac",
-    "build:linux": "npm run build && electron-builder --linux"
+    "build:linux": "npm run build && electron-builder --linux",
+    "desktop": "cd desktop && npm start",
+  "mobile:dev": "vite --config vite.config.cordova.js",
+  "mobile:build": "vite build --config vite.config.cordova.js",
+  "mobile:preview": "vite preview --config vite.config.cordova.js",
+  "mobile:android": "npm run mobile:build && cd mobile && cordova run android",
+  "mobile:browser": "npm run mobile:build && cd mobile && cordova run browser",
+  "copy-shared": "node scripts/copy-shared.js"
   },
   "dependencies": {
     "@electron-toolkit/preload": "^3.0.1",
