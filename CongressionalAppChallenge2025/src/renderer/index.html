@@ -2,86 +2,146 @@
 <html>
   <head>
     <meta charset="UTF-8" />
-    <title>Curriq</title>
+    <title>Curriq - AI Study Assistant</title>
     <!-- https://developer.mozilla.org/en-US/docs/Web/HTTP/CSP -->
     <meta
       http-equiv="Content-Security-Policy"
-      content="default-src 'self'; script-src 'self' 'unsafe-eval' https://cdn.jsdelivr.net; style-src 'self' 'unsafe-inline'; img-src 'self' data:; media-src 'self' blob:; connect-src 'self' https://cdn.jsdelivr.net"
+      content="default-src 'self'; script-src 'self' 'unsafe-eval' https://cdn.jsdelivr.net; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src 'self' https://fonts.gstatic.com; img-src 'self' data:; media-src 'self' blob:; connect-src 'self' https://cdn.jsdelivr.net"
     />
+    <!-- Google Fonts - Optional but recommended for the Material look -->
+    <link href="https://fonts.googleapis.com/css2?family=Roboto:wght@300;400;500;700&display=swap" rel="stylesheet">
+    <!-- Material Icons -->
+    <link href="https://fonts.googleapis.com/icon?family=Material+Icons" rel="stylesheet">
+    <!-- Your custom styles based on new theme -->
+    <link href="./assets/dark-theme.css" type="text/css" rel="stylesheet" />
     <link href="./assets/main.css" type="text/css" rel="stylesheet" />
   </head>
-  <body>
+  <body class="dark-theme">
     <div id="app">
       <header>
         <img alt="logo" class="logo" src="./assets/electron.svg">
         <h1>Curriq - AI Study Assistant</h1>
+        <div class="header-actions">
+          <button class="icon-button" id="theme-toggle" title="Toggle theme">
+            <span class="material-icons">dark_mode</span>
+          </button>
+        </div>
       </header>
       
-      <nav class="main-nav">
-        <button class="nav-btn active" data-section="dashboard">Dashboard</button>
-        <button class="nav-btn" data-section="focus">Focus Tracking</button>
-        <button class="nav-btn" data-section="curriculum">Curriculum</button>
-        <button class="nav-btn" data-section="settings">Settings</button>
-      </nav>
-      
-      <main>
-        <!-- Dashboard Section -->
-        <section id="dashboard-section" class="content-section active">
-          <h2>Study Dashboard</h2>
-          <div class="dashboard-stats">
-            <div class="stat-card">
-              <h3>Study Time</h3>
-              <p class="stat-value">0h</p>
-            </div>
-            <div class="stat-card">
-              <h3>Average Focus</h3>
-              <p class="stat-value">0%</p>
-            </div>
-            <div class="stat-card">
-              <h3>Modules Complete</h3>
-              <p class="stat-value">0</p>
-            </div>
-          </div>
-        </section>
+      <div class="app-container">
+        <nav class="main-nav">
+          <button class="nav-btn active" data-section="dashboard">
+            <span class="material-icons">dashboard</span>
+            Dashboard
+          </button>
+          <button class="nav-btn" data-section="focus">
+            <span class="material-icons">visibility</span>
+            Focus Tracking
+          </button>
+          <button class="nav-btn" data-section="curriculum">
+            <span class="material-icons">school</span>
+            Curriculum
+          </button>
+          <button class="nav-btn" data-section="settings">
+            <span class="material-icons">settings</span>
+            Settings
+          </button>
+        </nav>
         
-        <!-- Focus Tracking Section -->
-        <section id="focus-section" class="content-section">
-          <h2>Focus Tracking</h2>
-          <div id="focus-tracking-container" class="focus-container">
-            <!-- Focus tracking UI will be inserted here by JavaScript -->
-          </div>
-        </section>
-        
-        <!-- Curriculum Section -->
-        <section id="curriculum-section" class="content-section">
-          <h2>Your Curriculum</h2>
-          <div class="curriculum-content">
-            <p>Connect your Google Classroom account to generate personalized curricula.</p>
-            <button id="connect-classroom">Connect Google Classroom</button>
-          </div>
-        </section>
-        
-        <!-- Settings Section -->
-        <section id="settings-section" class="content-section">
-          <h2>Settings</h2>
-          <div class="settings-form">
-            <div class="setting-group">
-              <label for="camera-select">Camera</label>
-              <select id="camera-select">
-                <option value="default">Default Camera</option>
-              </select>
+        <main>
+          <!-- Dashboard Section -->
+          <section id="dashboard-section" class="content-section active">
+            <h2>Study Dashboard</h2>
+            <div class="dashboard-stats">
+              <div class="stat-card">
+                <h3>Study Time</h3>
+                <p class="stat-value">0h</p>
+                <div class="trend positive">
+                  <span class="material-icons">trending_up</span>
+                  <span>5%</span>
+                </div>
+              </div>
+              <div class="stat-card">
+                <h3>Average Focus</h3>
+                <p class="stat-value">0%</p>
+                <div class="trend neutral">
+                  <span class="material-icons">trending_flat</span>
+                  <span>0%</span>
+                </div>
+              </div>
+              <div class="stat-card">
+                <h3>Modules Complete</h3>
+                <p class="stat-value">0</p>
+                <div class="trend positive">
+                  <span class="material-icons">trending_up</span>
+                  <span>2 new</span>
+                </div>
+              </div>
             </div>
-            <div class="setting-group">
-              <label>Focus Tracking</label>
-              <label class="toggle">
-                <input type="checkbox" id="enable-focus" checked>
-                <span class="toggle-slider"></span>
-                Enable Focus Tracking
-              </label>
+
+            <div class="chart-container">
+              <h3>Focus History</h3>
+              <div id="focus-chart" class="chart"></div>
             </div>
-          </div>
-        </section>
-      </main>
+
+            <div class="recent-sessions">
+              <h3>Recent Sessions</h3>
+              <div class="sessions-list">
+                <p class="empty-state">No recent study sessions found. Start tracking your focus to see data here.</p>
+              </div>
+            </div>
+          </section>
+          
+          <!-- Focus Tracking Section -->
+          <section id="focus-section" class="content-section">
+            <h2>Focus Tracking</h2>
+            <div id="focus-tracking-container" class="focus-container">
+              <!-- Focus tracking UI will be inserted here by JavaScript -->
+            </div>
+          </section>
+          
+          <!-- Curriculum Section -->
+          <section id="curriculum-section" class="content-section">
+            <h2>Your Curriculum</h2>
+            <div class="curriculum-content">
+              <p>Connect your Google Classroom account to generate personalized curricula.</p>
+              <button id="connect-classroom" class="primary-button">
+                <span class="material-icons">cloud_download</span>
+                Connect Google Classroom
+              </button>
+            </div>
+          </section>
+          
+          <!-- Settings Section -->
+          <section id="settings-section" class="content-section">
+            <h2>Settings</h2>
+            <div class="settings-form">
+              <div class="setting-group">
+                <label for="camera-select">Camera</label>
+                <select id="camera-select" class="select-input">
+                  <option value="default">Default Camera</option>
+                </select>
+              </div>
+              <div class="setting-group">
+                <label>Focus Tracking</label>
+                <label class="toggle">
+                  <input type="checkbox" id="enable-focus" checked>
+                  <span class="toggle-slider"></span>
+                  Enable Focus Tracking
+                </label>
+              </div>
+              <div class="setting-group">
+                <label>Theme</label>
+                <div class="theme-options">
+                  <button class="theme-option active" data-theme="dark">Dark</button>
+                  <button class="theme-option" data-theme="light">Light</button>
+                  <button class="theme-option" data-theme="system">System</button>
+                </div>
+              </div>
+            </div>
+          </section>
+        </main>
+      </div>
       
       <footer>
         <ul class="versions">

@@ -1,4 +1,5 @@
 import { defineConfig } from 'vite';
+import tailwindcss from '@tailwindcss/vite';
 import path from 'path';
 
 export default defineConfig({
@@ -29,5 +30,9 @@ export default defineConfig({
   server: {
     port: 8080,
     open: true
-  }
+  },
+  
+  plugins: [
+    tailwindcss(),
+  ],
 });

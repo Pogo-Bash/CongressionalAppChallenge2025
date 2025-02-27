@@ -30,10 +30,19 @@
   "dependencies": {
     "@electron-toolkit/preload": "^3.0.1",
     "@electron-toolkit/utils": "^4.0.0",
+    "@emotion/react": "^11.14.0",
+    "@emotion/styled": "^11.14.0",
+    "@fontsource/roboto": "^5.1.1",
+    "@mui/icons-material": "^6.4.6",
+    "@mui/material": "^6.4.6",
+    "@tailwindcss/vite": "^4.0.9",
     "@tensorflow-models/face-landmarks-detection": "^1.0.6",
     "@tensorflow/tfjs": "^4.22.0",
     "@tensorflow/tfjs-converter": "^4.22.0",
-    "electron-updater": "^6.3.9"
+    "chart.js": "^4.4.8",
+    "electron-updater": "^6.3.9",
+    "flowbite": "^3.1.2",
+    "tailwindcss": "^4.0.9"
   },
   "devDependencies": {
     "@electron-toolkit/eslint-config": "^2.0.0",
