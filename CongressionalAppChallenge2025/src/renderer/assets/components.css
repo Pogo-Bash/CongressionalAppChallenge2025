@@ -1,0 +1,205 @@
+/* Layout structure */
+.app-container {
+    display: flex;
+    flex-direction: column;
+    min-height: 100vh;
+  }
+  
+  header {
+    display: flex;
+    align-items: center;
+    padding: 1rem;
+    box-shadow: 0 2px 4px var(--shadow-color);
+  }
+  
+  .logo {
+    width: 40px;
+    height: 40px;
+    margin-right: 1rem;
+  }
+  
+  .header-actions {
+    margin-left: auto;
+  }
+  
+  main {
+    display: flex;
+    flex: 1;
+  }
+  
+  .main-nav {
+    width: 240px;
+    padding: 1rem 0;
+  }
+  
+  .content-area {
+    flex: 1;
+    padding: 1.5rem;
+    overflow-y: auto;
+  }
+  
+  footer {
+    padding: 0.75rem;
+    text-align: center;
+  }
+  
+  /* Navigation components */
+  .nav-btn {
+    display: flex;
+    align-items: center;
+    width: 100%;
+    padding: 0.75rem 1.5rem;
+    border: none;
+    text-align: left;
+    font-size: 0.9rem;
+    transition: background-color 0.2s;
+  }
+  
+  .nav-btn .material-icons {
+    margin-right: 0.75rem;
+  }
+  
+  /* Content sections */
+  .content-section {
+    display: none;
+  }
+  
+  .content-section.active {
+    display: block;
+  }
+  
+  /* Cards and stats */
+  .dashboard-stats {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(240px, 1fr));
+    gap: 1rem;
+    margin-bottom: 1.5rem;
+  }
+  
+  .stat-card {
+    padding: 1.25rem;
+    border-radius: var(--border-radius);
+    box-shadow: 0 2px 8px var(--shadow-color);
+    transition: transform 0.2s;
+  }
+  
+  .stat-card:hover {
+    transform: translateY(-2px);
+  }
+  
+  .stat-value {
+    font-size: 2rem;
+    font-weight: 500;
+    margin: 0.5rem 0;
+  }
+  
+  .trend {
+    display: flex;
+    align-items: center;
+    font-size: 0.8rem;
+  }
+  
+  /* Charts and visualizations */
+  .chart-container {
+    padding: 1.25rem;
+    margin-bottom: 1.5rem;
+    border-radius: var(--border-radius);
+  }
+  
+  .chart {
+    height: 300px;
+    width: 100%;
+    position: relative;
+    border-radius: var(--border-radius);
+  }
+  
+  /* Form elements */
+  .settings-form {
+    max-width: 600px;
+  }
+  
+  .setting-group {
+    margin-bottom: 1.5rem;
+  }
+  
+  .setting-group > label {
+    display: block;
+    margin-bottom: 0.5rem;
+    font-weight: 500;
+  }
+  
+  .primary-button {
+    padding: 0.75rem 1.25rem;
+    border: none;
+    border-radius: var(--border-radius);
+    font-weight: 500;
+    cursor: pointer;
+    display: inline-flex;
+    align-items: center;
+    transition: background-color 0.2s;
+  }
+  
+  .primary-button .material-icons {
+    margin-right: 0.5rem;
+  }
+  
+  .select-input {
+    padding: 0.5rem;
+    border-radius: var(--border-radius);
+    width: 100%;
+  }
+  
+  /* Toggle switch structure */
+  .toggle {
+    position: relative;
+    display: inline-flex;
+    align-items: center;
+    cursor: pointer;
+  }
+  
+  .toggle input {
+    opacity: 0;
+    width: 0;
+    height: 0;
+  }
+  
+  .toggle-slider {
+    position: relative;
+    display: inline-block;
+    width: 40px;
+    height: 20px;
+    border-radius: 20px;
+    margin-right: 10px;
+    transition: background-color 0.2s;
+  }
+  
+  .toggle-slider:before {
+    content: '';
+    position: absolute;
+    width: 16px;
+    height: 16px;
+    border-radius: 50%;
+    left: 2px;
+    bottom: 2px;
+    transition: transform 0.2s, background-color 0.2s;
+  }
+  
+  .toggle input:checked + .toggle-slider:before {
+    transform: translateX(20px);
+  }
+  
+  /* Responsive layout */
+  @media (max-width: 768px) {
+    main {
+      flex-direction: column;
+    }
+    
+    .main-nav {
+      width: 100%;
+      padding: 0.5rem;
+    }
+    
+    .dashboard-stats {
+      grid-template-columns: 1fr;
+    }
+  }

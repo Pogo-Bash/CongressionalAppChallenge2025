@@ -1,0 +1,121 @@
+:root.light-theme {
+    /* Base colors for light theme */
+    --primary-color: #3366ff;
+    --primary-light: #e8efff;
+    --primary-dark: #2349cc;
+    
+    --secondary-color: #ff9966;
+    --secondary-light: #fff2ec;
+    --secondary-dark: #e67e4d;
+    
+    --positive-color: #4cd964;
+    --negative-color: #ff3b30;
+    --warning-color: #ffcc00;
+    
+    --background-color: #f5f5f5;
+    --card-background: #ffffff;
+    --elevated-background: #f0f0f0;
+    
+    --text-primary: #333333;
+    --text-secondary: #666666;
+    --text-disabled: #999999;
+    
+    --divider-color: rgba(0, 0, 0, 0.12);
+    --shadow-color: rgba(0, 0, 0, 0.1);
+    
+    --border-radius: 8px;
+    --chart-grid: rgba(0, 0, 0, 0.1);
+  }
+  
+  /* Apply light theme colors to components */
+  body.light-theme {
+    background-color: var(--background-color);
+    color: var(--text-primary);
+  }
+  
+  .light-theme header {
+    background-color: var(--card-background);
+    color: var(--text-primary);
+  }
+  
+  .light-theme .main-nav {
+    background-color: var(--card-background);
+    border-right: 1px solid var(--divider-color);
+  }
+  
+  .light-theme .nav-btn {
+    background: none;
+    color: var(--text-secondary);
+  }
+  
+  .light-theme .nav-btn:hover {
+    background-color: var(--primary-light);
+  }
+  
+  .light-theme .nav-btn.active {
+    color: var(--primary-color);
+    background-color: var(--primary-light);
+    border-left: 3px solid var(--primary-color);
+  }
+  
+  .light-theme .stat-card {
+    background-color: var(--card-background);
+  }
+  
+  .light-theme .chart-container {
+    background-color: var(--card-background);
+  }
+  
+  .light-theme .chart {
+    background-color: var(--card-background);
+  }
+  
+  .light-theme .trend.positive {
+    color: var(--positive-color);
+  }
+  
+  .light-theme .trend.negative {
+    color: var(--negative-color);
+  }
+  
+  .light-theme .trend.neutral {
+    color: var(--text-secondary);
+  }
+  
+  .light-theme .primary-button {
+    background-color: var(--primary-color);
+    color: white;
+  }
+  
+  .light-theme .primary-button:hover {
+    background-color: var(--primary-dark);
+  }
+  
+  .light-theme .select-input {
+    background-color: var(--card-background);
+    color: var(--text-primary);
+    border: 1px solid var(--divider-color);
+  }
+  
+  .light-theme .toggle-slider {
+    background-color: var(--elevated-background);
+    border: 1px solid var(--divider-color);
+  }
+  
+  .light-theme .toggle-slider:before {
+    background-color: var(--text-secondary);
+  }
+  
+  .light-theme .toggle input:checked + .toggle-slider {
+    background-color: rgba(51, 102, 255, 0.2);
+  }
+  
+  .light-theme .toggle input:checked + .toggle-slider:before {
+    background-color: var(--primary-color);
+  }
+  
+  .light-theme footer {
+    background-color: var(--card-background);
+    color: var(--text-secondary);
+    border-top: 1px solid var(--divider-color);
+  }

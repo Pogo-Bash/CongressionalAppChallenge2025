@@ -49,15 +49,13 @@ export const themeManager = {
       if (theme === 'dark') {
         document.body.classList.add('dark-theme');
         document.body.classList.remove('light-theme');
-        // Update theme toggle icon
-        const themeIcon = document.querySelector('#theme-toggle .material-icons');
-        if (themeIcon) themeIcon.textContent = 'light_mode';
+        document.documentElement.classList.add('dark-theme');
+        document.documentElement.classList.remove('light-theme');
       } else {
         document.body.classList.add('light-theme');
         document.body.classList.remove('dark-theme');
-        // Update theme toggle icon
-        const themeIcon = document.querySelector('#theme-toggle .material-icons');
-        if (themeIcon) themeIcon.textContent = 'dark_mode';
+        document.documentElement.classList.add('light-theme');
+        document.documentElement.classList.remove('dark-theme');
       }
     },
     

@@ -1,349 +1,118 @@
-:root {
-    /* Base colors from theme.js */
-    --primary-color: #3366ff;
-    --primary-light: #5c8cff;
-    --primary-dark: #2349cc;
-    
-    --secondary-color: #ff9966;
-    --secondary-light: #ffb38a;
-    --secondary-dark: #e67e4d;
-    
-    --positive-color: #4cd964;
-    --negative-color: #ff3b30;
-    --warning-color: #ffcc00;
-    
-    --background-color: #1e2230;
-    --card-background: #262b3c;
-    --elevated-background: #2d3348;
-    
-    --text-primary: #ffffff;
-    --text-secondary: #b0b7c3;
-    --text-disabled: #6c7283;
-    
-    --divider-color: rgba(255, 255, 255, 0.12);
-    
-    /* Additional UI colors */
-    --chart-grid: rgba(255, 255, 255, 0.1);
-    --shadow-color: rgba(0, 0, 0, 0.3);
-    
-    /* Border radius */
-    --border-radius: 8px;
-  }
+:root.dark-theme {
+  /* Base colors from theme.js */
+  --primary-color: #3366ff;
+  --primary-light: #5c8cff;
+  --primary-dark: #2349cc;
   
-  /* Base styles for dark theme */
-  body.dark-theme {
-    background-color: var(--background-color);
-    color: var(--text-primary);
-    font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif;
-    margin: 0;
-    padding: 0;
-  }
+  --secondary-color: #ff9966;
+  --secondary-light: #ffb38a;
+  --secondary-dark: #e67e4d;
   
-  /* Layout components */
-  body.dark-theme #app {
-    display: flex;
-    flex-direction: column;
-    min-height: 100vh;
-  }
+  --positive-color: #4cd964;
+  --negative-color: #ff3b30;
+  --warning-color: #ffcc00;
   
-  body.dark-theme .app-container {
-    display: flex;
-    flex: 1;
-  }
+  --background-color: #1e2230;
+  --card-background: #262b3c;
+  --elevated-background: #2d3348;
   
-  /* Header */
-  body.dark-theme header {
-    background-color: var(--card-background);
-    color: var(--text-primary);
-    padding: 1rem;
-    display: flex;
-    align-items: center;
-    box-shadow: 0 2px 8px var(--shadow-color);
-  }
+  --text-primary: #ffffff;
+  --text-secondary: #b0b7c3;
+  --text-disabled: #6c7283;
   
-  body.dark-theme .header-actions {
-    margin-left: auto;
-  }
+  --divider-color: rgba(255, 255, 255, 0.12);
+  --shadow-color: rgba(0, 0, 0, 0.3);
   
-  body.dark-theme .icon-button {
-    background: none;
-    border: none;
-    color: var(--text-primary);
-    cursor: pointer;
-    border-radius: 50%;
-    width: 36px;
-    height: 36px;
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    transition: background-color 0.2s;
-  }
-  
-  body.dark-theme .icon-button:hover {
-    background-color: rgba(255, 255, 255, 0.1);
-  }
-  
-  /* Navigation */
-  body.dark-theme .main-nav {
-    background-color: var(--card-background);
-    width: 240px;
-    padding: 1rem 0;
-  }
-  
-  body.dark-theme .nav-btn {
-    display: flex;
-    align-items: center;
-    width: 100%;
-    padding: 0.75rem 1.5rem;
-    background: none;
-    border: none;
-    color: var(--text-secondary);
-    cursor: pointer;
-    text-align: left;
-    font-size: 0.9rem;
-    transition: background-color 0.2s;
-  }
-  
-  body.dark-theme .nav-btn .material-icons {
-    margin-right: 0.75rem;
-  }
-  
-  body.dark-theme .nav-btn:hover {
-    background-color: rgba(255, 255, 255, 0.05);
-  }
-  
-  body.dark-theme .nav-btn.active {
-    color: var(--primary-color);
-    background-color: rgba(51, 102, 255, 0.1);
-    border-left: 3px solid var(--primary-color);
-  }
-  
-  /* Main content area */
-  body.dark-theme main {
-    flex: 1;
-    padding: 1.5rem;
-    overflow-y: auto;
-  }
-  
-  body.dark-theme .content-section {
-    display: none;
-  }
-  
-  body.dark-theme .content-section.active {
-    display: block;
-  }
-  
-  body.dark-theme h2 {
-    margin-top: 0;
-    margin-bottom: 1.5rem;
-    font-weight: 500;
-    font-size: 1.5rem;
-  }
-  
-  /* Cards */
-  body.dark-theme .stat-card {
-    background-color: var(--card-background);
-    border-radius: var(--border-radius);
-    padding: 1.25rem;
-    box-shadow: 0 2px 8px var(--shadow-color);
-    transition: transform 0.2s;
-  }
-  
-  body.dark-theme .stat-card:hover {
-    transform: translateY(-2px);
-  }
-  
-  body.dark-theme .dashboard-stats {
-    display: grid;
-    grid-template-columns: repeat(auto-fit, minmax(240px, 1fr));
-    gap: 1rem;
-    margin-bottom: 1.5rem;
-  }
-  
-  body.dark-theme .stat-value {
-    font-size: 2rem;
-    font-weight: 500;
-    margin: 0.5rem 0;
-  }
-  
-  body.dark-theme .trend {
-    display: flex;
-    align-items: center;
-    font-size: 0.8rem;
-  }
-  
-  body.dark-theme .trend.positive {
-    color: var(--positive-color);
-  }
-  
-  body.dark-theme .trend.negative {
-    color: var(--negative-color);
-  }
-  
-  body.dark-theme .trend.neutral {
-    color: var(--text-secondary);
-  }
-  
-  /* Chart container */
-  body.dark-theme .chart-container {
-    background-color: var(--card-background);
-    border-radius: var(--border-radius);
-    padding: 1.25rem;
-    margin-bottom: 1.5rem;
-    box-shadow: 0 2px 8px var(--shadow-color);
-  }
-  
-  body.dark-theme .chart {
-    height: 300px;
-    width: 100%;
-    background-color: var(--card-background);
-    border-radius: var(--border-radius);
-    position: relative;
-  }
-  
-  /* Form controls */
-  body.dark-theme .primary-button {
-    background-color: var(--primary-color);
-    color: white;
-    border: none;
-    padding: 0.75rem 1.25rem;
-    border-radius: var(--border-radius);
-    font-weight: 500;
-    cursor: pointer;
-    display: inline-flex;
-    align-items: center;
-    transition: background-color 0.2s;
-  }
-  
-  body.dark-theme .primary-button .material-icons {
-    margin-right: 0.5rem;
-  }
-  
-  body.dark-theme .primary-button:hover {
-    background-color: var(--primary-dark);
-  }
-  
-  body.dark-theme .select-input {
-    background-color: var(--elevated-background);
-    color: var(--text-primary);
-    border: 1px solid var(--divider-color);
-    padding: 0.5rem;
-    border-radius: var(--border-radius);
-    width: 100%;
-  }
-  
-  /* Toggle switch */
-  body.dark-theme .toggle {
-    position: relative;
-    display: inline-flex;
-    align-items: center;
-    cursor: pointer;
-  }
-  
-  body.dark-theme .toggle input {
-    opacity: 0;
-    width: 0;
-    height: 0;
-  }
-  
-  body.dark-theme .toggle-slider {
-    position: relative;
-    display: inline-block;
-    width: 40px;
-    height: 20px;
-    background-color: var(--elevated-background);
-    border-radius: 20px;
-    margin-right: 10px;
-    transition: background-color 0.2s;
-  }
-  
-  body.dark-theme .toggle-slider:before {
-    content: '';
-    position: absolute;
-    width: 16px;
-    height: 16px;
-    border-radius: 50%;
-    left: 2px;
-    bottom: 2px;
-    background-color: var(--text-secondary);
-    transition: transform 0.2s, background-color 0.2s;
-  }
-  
-  body.dark-theme .toggle input:checked + .toggle-slider {
-    background-color: rgba(51, 102, 255, 0.5);
-  }
-  
-  body.dark-theme .toggle input:checked + .toggle-slider:before {
-    transform: translateX(20px);
-    background-color: var(--primary-color);
-  }
-  
-  /* Theme options */
-  body.dark-theme .theme-options {
-    display: flex;
-    gap: 0.5rem;
-  }
-  
-  body.dark-theme .theme-option {
-    background-color: var(--elevated-background);
-    border: 1px solid var(--divider-color);
-    color: var(--text-secondary);
-    padding: 0.5rem 1rem;
-    border-radius: var(--border-radius);
-    cursor: pointer;
-  }
-  
-  body.dark-theme .theme-option.active {
-    background-color: var(--primary-color);
-    color: white;
-    border-color: var(--primary-color);
-  }
-  
-  /* Footer */
-  body.dark-theme footer {
-    background-color: var(--card-background);
-    color: var(--text-secondary);
-    padding: 0.75rem;
-    font-size: 0.8rem;
-    text-align: center;
-  }
-  
-  body.dark-theme .versions {
-    list-style: none;
-    padding: 0;
-    margin: 0;
-    display: flex;
-    justify-content: center;
-    gap: 1rem;
-  }
-  
-  /* Settings section */
-  body.dark-theme .settings-form {
-    max-width: 600px;
-  }
-  
-  body.dark-theme .setting-group {
-    margin-bottom: 1.5rem;
-  }
-  
-  body.dark-theme .setting-group > label {
-    display: block;
-    margin-bottom: 0.5rem;
-    font-weight: 500;
-  }
-  
-  /* Empty states */
-  body.dark-theme .empty-state {
-    color: var(--text-secondary);
-    font-style: italic;
-    text-align: center;
-    padding: 2rem;
-  }
-  
-  /* Recent sessions */
-  body.dark-theme .recent-sessions {
-    background-color: var(--card-background);
-    border-radius: var(--border-radius);
-    padding: 1.25rem;
-    box-shadow: 0 2px 8px var(--shadow-color);
-  }
+  --border-radius: 8px;
+  --chart-grid: rgba(255, 255, 255, 0.1);
+}
+
+/* Apply dark theme colors to components */
+body.dark-theme {
+  background-color: var(--background-color);
+  color: var(--text-primary);
+}
+
+.dark-theme header {
+  background-color: var(--card-background);
+  color: var(--text-primary);
+}
+
+.dark-theme .main-nav {
+  background-color: var(--card-background);
+}
+
+.dark-theme .nav-btn {
+  background: none;
+  color: var(--text-secondary);
+}
+
+.dark-theme .nav-btn:hover {
+  background-color: rgba(255, 255, 255, 0.05);
+}
+
+.dark-theme .nav-btn.active {
+  color: var(--primary-color);
+  background-color: rgba(51, 102, 255, 0.1);
+  border-left: 3px solid var(--primary-color);
+}
+
+.dark-theme .stat-card {
+  background-color: var(--card-background);
+}
+
+.dark-theme .chart-container {
+  background-color: var(--card-background);
+}
+
+.dark-theme .chart {
+  background-color: var(--card-background);
+}
+
+.dark-theme .trend.positive {
+  color: var(--positive-color);
+}
+
+.dark-theme .trend.negative {
+  color: var(--negative-color);
+}
+
+.dark-theme .trend.neutral {
+  color: var(--text-secondary);
+}
+
+.dark-theme .primary-button {
+  background-color: var(--primary-color);
+  color: white;
+}
+
+.dark-theme .primary-button:hover {
+  background-color: var(--primary-dark);
+}
+
+.dark-theme .select-input {
+  background-color: var(--elevated-background);
+  color: var(--text-primary);
+  border: 1px solid var(--divider-color);
+}
+
+.dark-theme .toggle-slider {
+  background-color: var(--elevated-background);
+}
+
+.dark-theme .toggle-slider:before {
+  background-color: var(--text-secondary);
+}
+
+.dark-theme .toggle input:checked + .toggle-slider {
+  background-color: rgba(51, 102, 255, 0.5);
+}
+
+.dark-theme .toggle input:checked + .toggle-slider:before {
+  background-color: var(--primary-color);
+}
+
+.dark-theme footer {
+  background-color: var(--card-background);
+  color: var(--text-secondary);
+}
