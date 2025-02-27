@@ -27,6 +27,73 @@
     padding: 1rem;
     box-shadow: 0 2px 4px var(--shadow-color);
   }
+
+  .user-section {
+    position: relative;
+    margin-right: 10px;
+    display: flex;
+    align-items: center;
+  }
+  
+  .user-avatar {
+    width: 32px;
+    height: 32px;
+    border-radius: 50%;
+    cursor: pointer;
+    object-fit: cover;
+    border: 2px solid transparent;
+    transition: border-color 0.2s;
+  }
+  
+  .user-avatar:hover {
+    border-color: var(--primary-color);
+  }
+  
+  .user-menu {
+    position: absolute;
+    top: 100%;
+    right: 0;
+    width: 200px;
+    background-color: var(--card-background);
+    border-radius: var(--border-radius);
+    box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15);
+    padding: 8px 0;
+    display: none;
+    z-index: 1000;
+  }
+  
+  .user-section:hover .user-menu {
+    display: block;
+  }
+  
+  .user-name {
+    font-weight: 500;
+    padding: 8px 16px;
+    border-bottom: 1px solid var(--divider-color);
+    margin-bottom: 8px;
+  }
+  
+  .menu-item {
+    display: flex;
+    align-items: center;
+    padding: 8px 16px;
+    width: 100%;
+    text-align: left;
+    background: none;
+    border: none;
+    cursor: pointer;
+    color: var(--text-primary);
+    transition: background-color 0.2s;
+  }
+  
+  .menu-item:hover {
+    background-color: rgba(128, 128, 128, 0.1);
+  }
+  
+  .menu-item .material-icons {
+    margin-right: 8px;
+    font-size: 18px;
+  }
   
   .logo {
     width: 40px;
@@ -62,6 +129,17 @@
   
   .icon-button:hover {
     background-color: rgba(128, 128, 128, 0.1);
+  }
+
+  #theme-icon svg:hover {
+    transform: rotate(30deg);
+  }
+
+  #theme-icon svg {
+    fill: currentColor;
+    width: 24px;
+    height: 24px;
+    transition: transform 0.3s ease;
   }
   
   /* App container (main area) */
@@ -209,6 +287,62 @@
     gap: 1.5rem;
     border-radius: var(--border-radius, 8px);
     box-shadow: 0 2px 8px var(--shadow-color, rgba(0, 0, 0, 0.1));
+  }
+
+  .loading-indicator {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    padding: 2rem;
+  }
+  
+  .loading-indicator .material-icons {
+    font-size: 48px;
+    margin-bottom: 1rem;
+  }
+  
+  @keyframes rotating {
+    from { transform: rotate(0deg); }
+    to { transform: rotate(360deg); }
+  }
+  
+  .rotating {
+    animation: rotating 2s linear infinite;
+  }
+  
+  .courses-container {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(300px, 1fr));
+    gap: 1rem;
+  }
+  
+  .course-card {
+    padding: 1.25rem;
+    border-radius: var(--border-radius);
+    box-shadow: 0 2px 8px var(--shadow-color);
+    transition: transform 0.2s;
+    cursor: pointer;
+  }
+  
+  .course-card:hover {
+    transform: translateY(-2px);
+  }
+  
+  .course-name {
+    font-size: 1.1rem;
+    font-weight: 500;
+    margin-bottom: 0.5rem;
+  }
+  
+  .course-section {
+    font-size: 0.9rem;
+    color: var(--text-secondary);
+  }
+  
+  .course-description {
+    margin-top: 1rem;
+    font-size: 0.9rem;
   }
   
   /* Button styles */
@@ -428,25 +562,94 @@
   justify-content: space-between;
   align-items: center;
   background-color: #262b3c;
+  -webkit-app-region: drag;
+  user-select: none;
+  position: relative;
   height: 30px;
   padding: 5px;
+  z-index: 1000;
 }
 
 .drag-region {
   flex-grow: 1;
   -webkit-app-region: drag; /* Enables dragging */
+  height: 100%;
+}
+
+.window-controls {
+    display: flex;
+    -webkit-app-region: no-drag;
+    overflow: hidden;
 }
 
 .window-controls button {
-  background: none;
-  border: none;
-  color: white;
-  font-size: 14px;
-  width: 40px;
-  height: 30px;
-  cursor: pointer;
+    height: 32px;
+    width: 46px;
+    background: transparent;
+    border: none;
+    outline: none;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 14px;
+    cursor: pointer;
+    transition: background-color 0.2s, color 0.2s;
+    position: relative;
+    overflow: hidden;
+    
+    /* High-contrast outline to ensure visibility in any theme */
+    text-shadow: 0px 0px 1px rgba(0, 0, 0, 0.3);
+    font-weight: bold;
+}
+
+#close {
+    position: relative;
+    overflow: hidden;
+}
+  
+  /* Close button is always red on hover regardless of theme */
+#close:hover {
+    background-color: #e81123;
+    color: white;
+    overflow: hidden;
 }
 
 .window-controls button:hover {
   background: rgba(255, 255, 255, 0.2);
 }
+
+/* macOS style - circular buttons */
+.platform-darwin .window-controls {
+    display: flex;
+    gap: 8px;
+    margin-left: 10px;
+  }
+  
+  .platform-darwin .window-controls button {
+    width: 12px;
+    height: 12px;
+    border-radius: 50%;
+    padding: 0;
+  }
+  
+  .platform-darwin #close {
+    background-color: #ff5f57;
+  }
+  
+  .platform-darwin #minimize {
+    background-color: #ffbd2e;
+  }
+  
+  .platform-darwin #maximize {
+    background-color: #28c940;
+  }
+  
+  /* Hide button icons on macOS until hover */
+  .platform-darwin .window-controls button svg {
+    opacity: 0;
+    transition: opacity 0.2s;
+  }
+  
+  .platform-darwin .window-controls button:hover svg {
+    opacity: 0.5;
+  }

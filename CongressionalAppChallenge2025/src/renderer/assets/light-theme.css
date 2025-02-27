@@ -26,6 +26,24 @@
     --border-radius: 8px;
     --chart-grid: rgba(0, 0, 0, 0.1);
   }
+
+  .light-theme .custom-titlebar {
+    background-color: var(--card-background);
+    border-bottom: 1px solid var(--divider-color);
+  }
+  
+  .light-theme .window-controls button {
+    color: var(--text-secondary);
+  }
+  
+  .light-theme .window-controls button:hover {
+    background-color: rgba(0, 0, 0, 0.05);
+  }
+  
+  .light-theme #close:hover {
+    background-color: #e81123;
+    color: white;
+  }
   
   /* Apply light theme colors to components */
   body.light-theme {
@@ -56,6 +74,10 @@
     color: var(--primary-color);
     background-color: var(--primary-light);
     border-left: 3px solid var(--primary-color);
+  }
+
+  .light-theme .icon-button {
+    color: #333333;
   }
   
   .light-theme .stat-card {

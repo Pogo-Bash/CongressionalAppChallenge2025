@@ -19,12 +19,23 @@
   </head>
   <body class="dark-theme">
     <div class="custom-titlebar">
-      <div class="drag-region">Curriq</div>
+      <div class="drag-region"></div>
       <div class="window-controls">
-        <button id="minimize">─</button>
-<button id="maximize">▢</button>
-<button id="close">✖</button>
-
+        <button id="minimize">
+          <svg width="10" height="1" viewBox="0 0 10 1">
+            <path d="M0 0h10v1H0z" fill="currentColor" />
+          </svg>
+        </button>
+        <button id="maximize">
+          <svg width="10" height="10" viewBox="0 0 10 10">
+            <path d="M0 0v10h10V0H0zm9 9H1V1h8v8z" fill="currentColor" />
+          </svg>
+        </button>
+        <button id="close">
+          <svg width="10" height="10" viewBox="0 0 10 10">
+            <path d="M6.01 5l3.78-3.78a.71.71 0 1 0-1-1L5 3.99 1.22.22a.71.71 0 0 0-1 1L3.99 5 .22 8.78a.71.71 0 1 0 1 1L5 6.01l3.78 3.78a.71.71 0 1 0 1-1L6.01 5z" fill="currentColor" />
+          </svg>
+        </button>
       </div>
     </div>
     
@@ -36,6 +47,25 @@
         <img alt="logo" class="logo" src="./assets/electron.svg">
         <h1>Curriq - AI Study Assistant</h1>
         <div class="header-actions">
+          <!-- User section - Hidden when not logged in -->
+          <div id="user-section" class="user-section" style="display: none;">
+            <img id="user-avatar" class="user-avatar" alt="User avatar" src="./assets/default-avatar.png">
+            <div class="user-menu">
+              <div id="user-name" class="user-name">User Name</div>
+              <button id="logout-button" class="menu-item">
+                <span class="material-icons">logout</span>
+                Sign Out
+              </button>
+            </div>
+          </div>
+          
+          <!-- Login button - Shown when not logged in -->
+          <button id="login-button" class="primary-button">
+            <span class="material-icons">login</span>
+            Sign In
+          </button>
+          
+          <!-- Theme toggle button -->
           <button class="icon-button" id="theme-toggle" title="Toggle theme">
             <span class="material-icons">dark_mode</span>
           </button>
@@ -117,12 +147,24 @@
           <!-- Curriculum Section -->
           <section id="curriculum-section" class="content-section">
             <h2>Your Curriculum</h2>
-            <div class="curriculum-content">
-              <p>Connect your Google Classroom account to generate personalized curricula.</p>
-              <button id="connect-classroom" class="primary-button">
-                <span class="material-icons">cloud_download</span>
-                Connect Google Classroom
+            
+            <div id="curriculum-loading" class="loading-indicator">
+              <span class="material-icons rotating">sync</span>
+              <p>Loading your courses...</p>
+            </div>
+            
+            <div id="curriculum-not-logged-in" class="curriculum-content">
+              <p>Sign in with Google to connect to Google Classroom and generate personalized curricula.</p>
+              <button id="curriculum-login-button" class="primary-button">
+                <span class="material-icons">login</span>
+                Sign In with Google
               </button>
+            </div>
+            
+            <div id="curriculum-content" class="curriculum-content" style="display: none;">
+              <div id="courses-container" class="courses-container">
+                <!-- Courses will be added here dynamically -->
+              </div>
             </div>
           </section>
           

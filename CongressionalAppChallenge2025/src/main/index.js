@@ -2,6 +2,14 @@ import { app, shell, BrowserWindow, ipcMain } from 'electron'
 import { join } from 'path'
 import { electronApp, optimizer, is } from '@electron-toolkit/utils'
 import icon from '../../resources/icon.png?asset'
+import path from 'path'
+import * as dotenv from 'dotenv'
+
+const envPath = app.isPackaged
+  ? path.join(process.resourcesPath, '.env')
+  : path.join(process.cwd(), '.env')
+
+dotenv.config({ path: envPath })
 
 function createWindow() {
   const mainWindow = new BrowserWindow({
@@ -21,6 +29,12 @@ function createWindow() {
 
   mainWindow.on('ready-to-show', () => {
     mainWindow.show()
+  })
+
+  mainWindow.webContents.on('did-finish-load', () => {
+    mainWindow.webContents.executeJavaScript(
+      `document.body.classList.add('platform-${process.platform}');`
+    );
   })
 
   mainWindow.webContents.setWindowOpenHandler((details) => {
@@ -86,4 +100,16 @@ ipcMain.on('window-control', (event, action) => {
       win.close();
       break;
   }
+});
+
+process.env.SECURE_ENV = JSON.stringify({
+  FIREBASE_CONFIG: {
+    apiKey: process.env.FIREBASE_API_KEY,
+    authDomain: process.env.FIREBASE_AUTH_DOMAIN,
+    projectId: process.env.FIREBASE_PROJECT_ID,
+    storageBucket: process.env.FIREBASE_STORAGE_BUCKET,
+    messagingSenderId: process.env.FIREBASE_MESSAGING_SENDER_ID,
+    appId: process.env.FIREBASE_APP_ID
+  },
+  GOOGLE_CLASSROOM_API_KEY: process.env.GOOGLE_CLASSROOM_API_KEY
 });

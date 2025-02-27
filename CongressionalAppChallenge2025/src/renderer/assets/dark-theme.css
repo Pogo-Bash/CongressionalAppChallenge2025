@@ -27,6 +27,24 @@
   --chart-grid: rgba(255, 255, 255, 0.1);
 }
 
+.dark-theme .custom-titlebar {
+  background-color: var(--card-background);
+  border-bottom: 1px solid var(--divider-color);
+}
+
+.dark-theme .window-controls button {
+  color: var(--text-secondary);
+}
+
+.dark-theme .window-controls button:hover {
+  background-color: rgba(255, 255, 255, 0.1);
+}
+
+.dark-theme #close:hover {
+  background-color: #e81123;
+  color: white;
+}
+
 /* Apply dark theme colors to components */
 body.dark-theme {
   background-color: var(--background-color);
@@ -55,6 +73,10 @@ body.dark-theme {
   color: var(--primary-color);
   background-color: rgba(51, 102, 255, 0.1);
   border-left: 3px solid var(--primary-color);
+}
+
+.dark-theme .icon-button {
+  color: white;
 }
 
 .dark-theme .stat-card {
