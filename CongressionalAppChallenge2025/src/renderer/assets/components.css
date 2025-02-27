@@ -371,3 +371,82 @@
       padding: 1rem;
     }
   }
+
+
+  /* Scrollbar for dark theme */
+.dark-theme ::-webkit-scrollbar {
+  width: 8px;
+  height: 2px;
+}
+
+.dark-theme ::-webkit-scrollbar-track {
+  background: var(--card-background);
+  border-radius: 4px;
+}
+
+.dark-theme ::-webkit-scrollbar-thumb {
+  background: var(--text-disabled);
+  border-radius: 4px;
+  transition: background-color 0.2s ease;
+}
+
+.dark-theme ::-webkit-scrollbar-thumb:hover {
+  background: var(--text-secondary);
+}
+
+.dark-theme ::-webkit-scrollbar-corner {
+  background: transparent;
+}
+
+/* Scrollbar for light theme */
+.light-theme ::-webkit-scrollbar {
+  width: 8px;
+  height: 2px;
+}
+
+.light-theme ::-webkit-scrollbar-track {
+  background: var(--card-background);
+  border-radius: 4px;
+}
+
+.light-theme ::-webkit-scrollbar-thumb {
+  background: var(--text-disabled);
+  border-radius: 4px;
+  transition: background-color 0.2s ease;
+}
+
+.light-theme ::-webkit-scrollbar-thumb:hover {
+  background: var(--text-secondary);
+}
+
+.light-theme ::-webkit-scrollbar-corner {
+  background: transparent;
+}
+
+.custom-titlebar {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  background-color: #262b3c;
+  height: 30px;
+  padding: 5px;
+}
+
+.drag-region {
+  flex-grow: 1;
+  -webkit-app-region: drag; /* Enables dragging */
+}
+
+.window-controls button {
+  background: none;
+  border: none;
+  color: white;
+  font-size: 14px;
+  width: 40px;
+  height: 30px;
+  cursor: pointer;
+}
+
+.window-controls button:hover {
+  background: rgba(255, 255, 255, 0.2);
+}
