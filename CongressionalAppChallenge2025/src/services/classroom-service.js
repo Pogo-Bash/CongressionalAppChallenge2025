@@ -1,6 +1,6 @@
 class ClassroomService {
     constructor() {
-      this.baseUrl = 'https://classroom.googleapis.com/v1';
+      this.baseUrl = 'https://classroom.googleapis.com';
       this.courses = null;
     }
   

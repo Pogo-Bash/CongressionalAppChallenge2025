@@ -1,51 +1,83 @@
-import { initializeApp } from 'firebase/app';
-import { getAuth, GoogleAuthProvider, signInWithPopup, onAuthStateChanged, signOut } from 'firebase/auth';
+// Remove duplicate imports - you're importing authService but also defining it in this file
 import { themeManager } from './theme-manager.js';
 
 // For communication with Electron main process
 const { ipcRenderer } = window.electron || {};
 
-// Firebase configuration - replace with your actual config values
-const firebaseConfig = {
-  apiKey: window.env?.firebaseConfig?.apiKey || process.env.FIREBASE_API_KEY,
-  authDomain: window.env?.firebaseConfig?.authDomain || process.env.FIREBASE_AUTH_DOMAIN,
-  projectId: window.env?.firebaseConfig?.projectId || process.env.FIREBASE_PROJECT_ID,
-  storageBucket: window.env?.firebaseConfig?.storageBucket || process.env.FIREBASE_STORAGE_BUCKET,
-  messagingSenderId: window.env?.firebaseConfig?.messagingSenderId || process.env.FIREBASE_MESSAGING_SENDER_ID,
-  appId: window.env?.firebaseConfig?.appId || process.env.FIREBASE_APP_ID
-};
+// Firebase configuration from environment variables
+const firebaseConfig = window.env?.firebaseConfig || {};
+
+// Log that we're using environment variables (without exposing the actual values)
+console.log('Using Firebase config from environment variables:', 
+  Object.keys(firebaseConfig).filter(key => !!firebaseConfig[key]).length + ' values configured');
+
+// Import Firebase modules
+import { initializeApp } from 'firebase/app';
+import { 
+  getAuth, 
+  GoogleAuthProvider, 
+  signInWithPopup, 
+  signInWithRedirect,
+  onAuthStateChanged, 
+  signOut,
+  getRedirectResult
+} from 'firebase/auth';
+import { getFirestore } from 'firebase/firestore';
 
 // Initialize Firebase
 let app;
 let auth;
+let db;
 
 try {
   app = initializeApp(firebaseConfig);
   auth = getAuth(app);
+  db = getFirestore(app);
   console.log('Firebase initialized successfully');
 } catch (error) {
   console.error('Firebase initialization error:', error);
 }
 
-// Auth Service
-const authService = {
-  user: null,
-  authListeners: [],
+// Add Google Classroom scopes to the provider
+const googleProvider = new GoogleAuthProvider();
+googleProvider.addScope('https://www.googleapis.com/auth/classroom.courses.readonly');
+googleProvider.addScope('https://www.googleapis.com/auth/classroom.coursework.me.readonly');
+googleProvider.addScope('https://www.googleapis.com/auth/classroom.rosters.readonly');
+
+// Authentication functions
+const signInWithGoogle = async () => {
+  try {
+    // Instead of popup, use redirect for better compatibility with Electron
+    console.log('Starting Google sign-in with redirect...');
+    await signInWithRedirect(auth, googleProvider);
+    // Code after this won't execute immediately due to redirect
+  } catch (error) {
+    console.error("Error signing in with Google", error);
+    throw error;
+  }
+};
+
+const logOut = async () => {
+  try {
+    await signOut(auth);
+    localStorage.removeItem('googleClassroomToken');
+    console.log('Sign out successful');
+  } catch (error) {
+    console.error("Error signing out", error);
+    throw error;
+  }
+};
+
+// Handle the redirect result from Google sign-in
+const handleRedirectResult = async () => {
+  if (!auth) return null;
   
-  async login() {
-    if (!auth) {
-      throw new Error('Firebase auth not initialized');
-    }
+  try {
+    console.log('Checking for redirect result...');
+    const result = await getRedirectResult(auth);
     
-    try {
-      const provider = new GoogleAuthProvider();
-      // Add Google Classroom scopes
-      provider.addScope('https://www.googleapis.com/auth/classroom.courses.readonly');
-      provider.addScope('https://www.googleapis.com/auth/classroom.coursework.me.readonly');
-      provider.addScope('https://www.googleapis.com/auth/classroom.rosters.readonly');
-      
-      console.log('Attempting to sign in with popup...');
-      const result = await signInWithPopup(auth, provider);
+    if (result) {
+      console.log('User signed in via redirect:', result.user);
       
       // Get the Google access token
       const credential = GoogleAuthProvider.credentialFromResult(result);
@@ -54,25 +86,38 @@ const authService = {
       // Store token for Google Classroom API calls
       localStorage.setItem('googleClassroomToken', token);
       
-      console.log('Sign in successful:', result.user);
       return result.user;
+    } else {
+      console.log('No redirect result');
+      return null;
+    }
+  } catch (error) {
+    console.error('Error handling redirect result:', error);
+    alert(`Authentication error: ${error.message}`);
+    return null;
+  }
+};
+
+// Auth Service - this should be the only instance of authService in the app
+const authService = {
+  user: null,
+  authListeners: [],
+  
+  async login() {
+    try {
+      console.log('Login requested');
+      return await signInWithGoogle();
     } catch (error) {
-      console.error('Login error:', error.code, error.message);
+      console.error("Login error:", error);
       throw error;
     }
   },
   
   async logout() {
-    if (!auth) {
-      throw new Error('Firebase auth not initialized');
-    }
-    
     try {
-      await signOut(auth);
-      localStorage.removeItem('googleClassroomToken');
-      console.log('Sign out successful');
+      await logOut();
     } catch (error) {
-      console.error('Logout error:', error);
+      console.error("Logout error:", error);
       throw error;
     }
   },
@@ -182,12 +227,43 @@ const classroomService = {
   }
 };
 
+// Initialize the application
+async function initializeApp() {
+  console.log('Initializing application...');
+  
+  try {
+    // First check for any redirect results
+    await handleRedirectResult();
+    
+    // Then initialize the rest of the app
+    themeManager.initialize();
+    createFocusChart();
+    initNavigation();
+    initSettings();
+    initializeAuth();
+    initWindowControls();
+  } catch (error) {
+    console.error('Error during app initialization:', error);
+  }
+}
+
 // Set up Firebase auth state listener
 if (auth) {
   onAuthStateChanged(auth, (user) => {
+    console.log('Auth state changed:', user ? 'User signed in' : 'User signed out');
+    if (user) {
+      console.log('User details:', {
+        displayName: user.displayName,
+        email: user.email,
+        uid: user.uid
+      });
+    }
+    
     authService.user = user;
     authService.notifyListeners();
-    console.log('Auth state changed:', user ? 'User signed in' : 'User signed out');
+    
+    // Update UI directly
+    updateUIForSignedInUser(user);
   });
 }
 
@@ -281,6 +357,40 @@ function initializeAuth() {
       if (curriculumLoading) curriculumLoading.style.display = 'none';
     }
   });
+}
+
+// Debug helper function for UI updates
+function updateUIForSignedInUser(user) {
+  if (!user) return;
+  
+  console.log('Updating UI for signed in user', user);
+  
+  const userSection = document.getElementById('user-section');
+  const loginButton = document.getElementById('login-button');
+  
+  console.log('UI elements:', {
+    userSection: userSection ? 'found' : 'missing',
+    loginButton: loginButton ? 'found' : 'missing'
+  });
+  
+  if (userSection && loginButton) {
+    userSection.style.display = 'flex';
+    loginButton.style.display = 'none';
+    
+    // Update user info if elements exist
+    const userAvatar = document.getElementById('user-avatar');
+    const userName = document.getElementById('user-name');
+    
+    if (userAvatar) {
+      userAvatar.src = user.photoURL || './assets/default-avatar.png';
+      console.log('Set avatar to:', userAvatar.src);
+    }
+    
+    if (userName) {
+      userName.textContent = user.displayName || user.email;
+      console.log('Set username to:', userName.textContent);
+    }
+  }
 }
 
 // Load curriculum data from Google Classroom
@@ -475,51 +585,6 @@ function createFocusChart() {
   chartElement.innerHTML = chartHTML;
 }
 
-// Debug logging for button detection
-document.addEventListener('DOMContentLoaded', () => {
-  console.log('DOM loaded, searching for elements...');
-  
-  console.log('Login button:', document.getElementById('login-button'));
-  console.log('Curriculum login button:', document.getElementById('curriculum-login-button'));
-  
-  console.log('All buttons on the page:');
-  document.querySelectorAll('button').forEach((button, index) => {
-    console.log(`Button ${index}:`, button, 'ID:', button.id);
-  });
-});
-
-// Window Control Buttons
-document.addEventListener('DOMContentLoaded', () => {
-  console.log('Initializing application...');
-  
-  // Initialize all components
-  themeManager.initialize();
-  createFocusChart();
-  initNavigation();
-  initSettings();
-  initializeAuth();
-
-  // Set up window control buttons
-  if (ipcRenderer) {
-    document.getElementById('minimize')?.addEventListener('click', () => {
-      console.log('Minimize button clicked');
-      ipcRenderer.send('window-control', 'minimize');
-    });
-
-    document.getElementById('maximize')?.addEventListener('click', () => {
-      console.log('Maximize button clicked');
-      ipcRenderer.send('window-control', 'maximize');
-    });
-
-    document.getElementById('close')?.addEventListener('click', () => {
-      console.log('Close button clicked');
-      ipcRenderer.send('window-control', 'close');
-    });
-  } else {
-    console.warn('IPC Renderer not available - window controls will not function');
-  }
-});
-
 // Initialize Navigation
 function initNavigation() {
   console.log('Initializing navigation...');
@@ -580,5 +645,47 @@ function initSettings() {
   });
 }
 
+// Window control buttons
+function initWindowControls() {
+  console.log('Initializing window controls...');
+  
+  // Set up window control buttons
+  if (ipcRenderer) {
+    document.getElementById('minimize')?.addEventListener('click', () => {
+      console.log('Minimize button clicked');
+      ipcRenderer.send('window-control', 'minimize');
+    });
+
+    document.getElementById('maximize')?.addEventListener('click', () => {
+      console.log('Maximize button clicked');
+      ipcRenderer.send('window-control', 'maximize');
+    });
+
+    document.getElementById('close')?.addEventListener('click', () => {
+      console.log('Close button clicked');
+      ipcRenderer.send('window-control', 'close');
+    });
+  } else {
+    console.warn('IPC Renderer not available - window controls will not function');
+  }
+}
+
+// Call initialize when DOM is loaded
+document.addEventListener('DOMContentLoaded', () => {
+  console.log('DOM loaded, initializing application...');
+  
+  // Debug logging for button detection
+  console.log('Login button:', document.getElementById('login-button'));
+  console.log('Curriculum login button:', document.getElementById('curriculum-login-button'));
+  
+  console.log('All buttons on the page:');
+  document.querySelectorAll('button').forEach((button, index) => {
+    console.log(`Button ${index}:`, button, 'ID:', button.id);
+  });
+  
+  // Initialize the application
+  initializeApp();
+});
+
 // Export services for use in other modules
-export { authService, classroomService };
+export { authService, classroomService, handleRedirectResult };

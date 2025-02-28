@@ -3,16 +3,12 @@
   <head>
     <meta charset="UTF-8" />
     <title>Curriq - AI Study Assistant</title>
-    <!-- https://developer.mozilla.org/en-US/docs/Web/HTTP/CSP -->
     <meta
       http-equiv="Content-Security-Policy"
       content="default-src 'self'; script-src 'self' 'unsafe-inline' 'unsafe-eval' https://cdn.jsdelivr.net https://*.googleapis.com https://*.firebaseio.com https://apis.google.com; font-src 'self' https://fonts.gstatic.com; img-src 'self' data: https://*.googleusercontent.com; media-src 'self' blob:; connect-src 'self' https://cdn.jsdelivr.net https://*.googleapis.com https://*.firebaseio.com https://identitytoolkit.googleapis.com; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; frame-src 'self' https://*.firebaseapp.com https://accounts.google.com;"
     />
-    <!-- Google Fonts - Optional but recommended for the Material look -->
     <link href="https://fonts.googleapis.com/css2?family=Roboto:wght@300;400;500;700&display=swap" rel="stylesheet">
-    <!-- Material Icons -->
     <link href="https://fonts.googleapis.com/icon?family=Material+Icons" rel="stylesheet">
-    <!-- Your custom styles based on new theme -->
     <link href="./assets/components.css" type="text/css" rel="stylesheet" />
     <link href="./assets/dark-theme.css" type="text/css" rel="stylesheet" />
     <link href="./assets/light-theme.css" type="text/css" rel="stylesheet" />
@@ -40,11 +36,12 @@
     </div>
 
     <div id="app">
-      <header>
-        <img alt="logo" class="logo" src="./assets/electron.svg">
-        <h1>Curriq - AI Study Assistant</h1>
-        <div class="header-actions">
-          <!-- User section - Hidden when not logged in -->
+      <header class="app-header">
+        <div class="header-left">
+          <img alt="logo" class="logo" src="./assets/electron.svg">
+          <h1>Curriq - AI Study Assistant</h1>
+        </div>
+        <div class="header-right">
           <div id="user-section" class="user-section" style="display: none;">
             <img id="user-avatar" class="user-avatar" alt="User avatar" src="./assets/default-avatar.png">
             <div class="user-menu">
@@ -55,14 +52,10 @@
               </button>
             </div>
           </div>
-          
-          <!-- Login button - Shown when not logged in -->
-          <button id="login-button" class="primary-button" onclick="console.log('Login button clicked via inline handler')">
+          <button id="login-button" class="primary-button">
             <span class="material-icons">login</span>
             Sign In
           </button>
-          
-          <!-- Theme toggle button -->
           <button class="icon-button" id="theme-toggle" title="Toggle theme">
             <span class="material-icons">dark_mode</span>
           </button>
@@ -89,11 +82,18 @@
           </button>
         </nav>
         
-        <main>
+        <main class="main-content">
           <!-- Dashboard Section -->
           <section id="dashboard-section" class="content-section active">
-            <h2>Study Dashboard</h2>
-            <div class="dashboard-stats">
+            <div class="dashboard-header">
+              <h2>Study Dashboard</h2>
+              <div class="dashboard-actions">
+                <button class="icon-button" title="Refresh Data">
+                  <span class="material-icons">refresh</span>
+                </button>
+              </div>
+            </div>
+            <div class="dashboard-grid">
               <div class="stat-card">
                 <h3>Study Time</h3>
                 <p class="stat-value">0h</p>
@@ -119,12 +119,10 @@
                 </div>
               </div>
             </div>
-
             <div class="chart-container">
               <h3>Focus History</h3>
               <div id="focus-chart" class="chart"></div>
             </div>
-
             <div class="recent-sessions">
               <h3>Recent Sessions</h3>
               <div class="sessions-list">
@@ -144,20 +142,17 @@
           <!-- Curriculum Section -->
           <section id="curriculum-section" class="content-section">
             <h2>Your Curriculum</h2>
-            
             <div id="curriculum-loading" class="loading-indicator">
               <span class="material-icons rotating">sync</span>
               <p>Loading your courses...</p>
             </div>
-            
             <div id="curriculum-not-logged-in" class="curriculum-content">
               <p>Sign in with Google to connect to Google Classroom and generate personalized curricula.</p>
-              <button id="curriculum-login-button" class="primary-button" onclick="console.log('Curriculum login button clicked via inline handler')">
+              <button id="curriculum-login-button" class="primary-button">
                 <span class="material-icons">login</span>
                 Sign In with Google
               </button>
             </div>
-            
             <div id="curriculum-content" class="curriculum-content" style="display: none;">
               <div id="courses-container" class="courses-container">
                 <!-- Courses will be added here dynamically -->
@@ -196,7 +191,7 @@
         </main>
       </div>
       
-      <footer>
+      <footer class="app-footer">
         <ul class="versions">
           <li class="electron-version"></li>
           <li class="chrome-version"></li>

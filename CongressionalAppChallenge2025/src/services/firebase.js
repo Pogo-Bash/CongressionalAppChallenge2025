@@ -1,5 +1,5 @@
 import { initializeApp } from 'firebase/app';
-import { getAuth, GoogleAuthProvider, signInWithPopup, signOut } from 'firebase/auth';
+import { getAuth, GoogleAuthProvider, signInWithRedirect, signOut } from 'firebase/auth';
 import { getFirestore } from 'firebase/firestore';
 
 // Your Firebase configuration
@@ -21,10 +21,12 @@ googleProvider.addScope('https://www.googleapis.com/auth/classroom.courses.reado
 googleProvider.addScope('https://www.googleapis.com/auth/classroom.coursework.me.readonly');
 googleProvider.addScope('https://www.googleapis.com/auth/classroom.rosters.readonly');
 
-// Authentication functions
+
 export const signInWithGoogle = async () => {
     try {
-      const result = await signInWithPopup(auth, googleProvider);
+      // Instead of signInWithPopup, we'll use signInWithRedirect
+      await signInWithRedirect(auth, googleProvider);
+      console.log('Sign-in redirect completed, processing result...');
       
       // Get Google access token
       const credential = GoogleAuthProvider.credentialFromResult(result);
@@ -32,13 +34,13 @@ export const signInWithGoogle = async () => {
       
       // Store the token for Google Classroom API calls
       localStorage.setItem('googleClassroomToken', token);
-      
-      return result.user;
+      console.log('Sign in successful, token stored');
+      return null; // This will only return after the redirect completes
     } catch (error) {
       console.error("Error signing in with Google", error);
       throw error;
     }
-};
+  };
 
 export const logOut = async () => {
   try {
@@ -50,4 +52,26 @@ export const logOut = async () => {
   }
 };
 
-export { auth, db };
+export const handleRedirectResult = async () => {
+    try {
+      const result = await getRedirectResult(auth);
+      if (result) {
+        // User successfully signed in
+        console.log('User signed in via redirect:', result.user);
+        
+        // Get the Google access token
+        const credential = GoogleAuthProvider.credentialFromResult(result);
+        const token = credential.accessToken;
+        
+        // Store token for Google Classroom API calls
+        localStorage.setItem('googleClassroomToken', token);
+        
+        return result.user;
+      }
+    } catch (error) {
+      console.error('Error handling redirect result:', error);
+      throw error;
+    }
+  };
+
+export { auth, db, handleRedirectResult };
