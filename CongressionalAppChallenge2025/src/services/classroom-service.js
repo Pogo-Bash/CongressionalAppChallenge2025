@@ -1,6 +1,6 @@
 class ClassroomService {
     constructor() {
-      this.baseUrl = 'https://classroom.googleapis.com';
+      this.baseUrl = 'https://classroom.googleapis.com/v1';
       this.courses = null;
     }
   
@@ -11,30 +11,53 @@ class ClassroomService {
   
     // Fetch all active courses
     async fetchCourses() {
-      const token = this.getToken();
-      if (!token) {
-        throw new Error('Not authenticated with Google Classroom');
-      }
-  
-      try {
-        const response = await fetch(`${this.baseUrl}/courses?courseStates=ACTIVE`, {
-          headers: {
-            'Authorization': `Bearer ${token}`
-          }
-        });
-  
-        if (!response.ok) {
-          throw new Error(`Failed to fetch courses: ${response.status}`);
+        const token = this.getToken();
+        if (!token) {
+          throw new Error('Not authenticated with Google Classroom');
         }
-  
-        const data = await response.json();
-        this.courses = data.courses || [];
-        return this.courses;
-      } catch (error) {
-        console.error('Error fetching courses:', error);
-        throw error;
+        
+        try {
+          console.log('Fetching Google Classroom courses...');
+          // Log the token (safely)
+          console.log('Token available:', !!token);
+          
+          const response = await fetch(`${this.baseUrl}/courses?courseStates=ACTIVE`, {
+            headers: {
+              'Authorization': `Bearer ${token}`
+            }
+          });
+          
+          console.log('Response status:', response.status);
+          
+          if (!response.ok) {
+            const errorText = await response.text();
+            console.error('API error response:', errorText);
+            throw new Error(`Failed to fetch courses: ${response.status} - ${errorText}`);
+          }
+          
+          const data = await response.json();
+          console.log('Courses response data:', data);
+          this.courseData = data.courses || [];
+          
+          if (!data.courses || data.courses.length === 0) {
+            console.log('No courses found in the response');
+          } else {
+            console.log(`Found ${data.courses.length} courses`);
+          }
+          
+          return this.courseData;
+        } catch (error) {
+          console.error('Error fetching Google Classroom courses:', error);
+          
+          // Handle token expired error
+          if (error.message.includes('401')) {
+            localStorage.removeItem('googleClassroomToken');
+            throw new Error('Google Classroom session expired. Please sign in again.');
+          }
+          
+          throw error;
+        }
       }
-    }
   
     // Fetch coursework for a specific course
     async fetchCourseWork(courseId) {

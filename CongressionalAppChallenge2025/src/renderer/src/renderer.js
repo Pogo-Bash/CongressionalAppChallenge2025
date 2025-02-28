@@ -43,6 +43,7 @@ const googleProvider = new GoogleAuthProvider();
 googleProvider.addScope('https://www.googleapis.com/auth/classroom.courses.readonly');
 googleProvider.addScope('https://www.googleapis.com/auth/classroom.coursework.me.readonly');
 googleProvider.addScope('https://www.googleapis.com/auth/classroom.rosters.readonly');
+googleProvider.addScope('https://www.googleapis.com/auth/classroom.profile.emails');
 
 // Authentication functions
 const signInWithGoogle = async () => {
@@ -85,6 +86,7 @@ const handleRedirectResult = async () => {
       
       // Store token for Google Classroom API calls
       localStorage.setItem('googleClassroomToken', token);
+      console.log('Token stored successfully:', !!token);
       
       return result.user;
     } else {
@@ -228,7 +230,7 @@ const classroomService = {
 };
 
 // Initialize the application
-async function initializeApp() {
+async function initApp() { 
   console.log('Initializing application...');
   
   try {
@@ -417,18 +419,35 @@ async function loadCurriculumData() {
   
   try {
     console.log('Loading curriculum data...');
+    const token = classroomService.getToken();
+    if (!token) {
+      throw new Error('No access token found. Please sign in again.');
+    }
+    
+    console.log('Fetching courses with token...');
     const courses = await classroomService.fetchCourses();
     
     // Clear existing courses
     coursesContainer.innerHTML = '';
     
-    if (courses.length === 0) {
+    if (!courses || courses.length === 0) {
+      console.log('No courses found, showing empty state');
       coursesContainer.innerHTML = `
         <div class="empty-state">
           <p>No active courses found in your Google Classroom account.</p>
+          <p>Make sure you have active courses in Google Classroom and that you've granted the necessary permissions.</p>
+          <button class="primary-button" id="retry-classroom">
+            <span class="material-icons">refresh</span>
+            Retry
+          </button>
         </div>
       `;
+      
+      document.getElementById('retry-classroom')?.addEventListener('click', () => {
+        loadCurriculumData();
+      });
     } else {
+      console.log(`Displaying ${courses.length} courses`);
       // Display each course
       courses.forEach(course => {
         const courseCard = document.createElement('div');
@@ -464,11 +483,25 @@ async function loadCurriculumData() {
           <span class="material-icons">refresh</span>
           Retry
         </button>
+        <button class="secondary-button" id="relogin-classroom">
+          <span class="material-icons">login</span>
+          Sign In Again
+        </button>
       </div>
     `;
     
     document.getElementById('retry-classroom')?.addEventListener('click', () => {
       loadCurriculumData();
+    });
+    
+    document.getElementById('relogin-classroom')?.addEventListener('click', async () => {
+      try {
+        localStorage.removeItem('googleClassroomToken');
+        await authService.login();
+      } catch (loginError) {
+        console.error('Failed to re-login:', loginError);
+        alert(`Failed to sign in: ${loginError.message}`);
+      }
     });
   }
 }
@@ -684,7 +717,7 @@ document.addEventListener('DOMContentLoaded', () => {
   });
   
   // Initialize the application
-  initializeApp();
+  initApp();
 });
 
 // Export services for use in other modules
