@@ -5,9 +5,9 @@
     <title>Curriq - AI Study Assistant</title>
     <!-- https://developer.mozilla.org/en-US/docs/Web/HTTP/CSP -->
     <meta
-      http-equiv="Content-Security-Policy"
-      content="default-src 'self'; script-src 'self' 'unsafe-eval' https://cdn.jsdelivr.net; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src 'self' https://fonts.gstatic.com; img-src 'self' data:; media-src 'self' blob:; connect-src 'self' https://cdn.jsdelivr.net"
-    />
+  http-equiv="Content-Security-Policy"
+  content="default-src 'self'; script-src 'self' 'unsafe-eval' https://cdn.jsdelivr.net https://*.googleapis.com https://*.firebaseio.com; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src 'self' https://fonts.gstatic.com; img-src 'self' data: https://*.googleusercontent.com; media-src 'self' blob:; connect-src 'self' https://cdn.jsdelivr.net https://*.googleapis.com https://*.firebaseio.com https://identitytoolkit.googleapis.com"
+/>
     <!-- Google Fonts - Optional but recommended for the Material look -->
     <link href="https://fonts.googleapis.com/css2?family=Roboto:wght@300;400;500;700&display=swap" rel="stylesheet">
     <!-- Material Icons -->
@@ -38,10 +38,7 @@
         </button>
       </div>
     </div>
-    
-    <script src="renderer.js"></script>
-    
-    
+
     <div id="app">
       <header>
         <img alt="logo" class="logo" src="./assets/electron.svg">
@@ -60,7 +57,7 @@
           </div>
           
           <!-- Login button - Shown when not logged in -->
-          <button id="login-button" class="primary-button">
+          <button id="login-button" class="primary-button" onclick="console.log('Login button clicked via inline handler')">
             <span class="material-icons">login</span>
             Sign In
           </button>
@@ -155,7 +152,7 @@
             
             <div id="curriculum-not-logged-in" class="curriculum-content">
               <p>Sign in with Google to connect to Google Classroom and generate personalized curricula.</p>
-              <button id="curriculum-login-button" class="primary-button">
+              <button id="curriculum-login-button" class="primary-button" onclick="console.log('Curriculum login button clicked via inline handler')">
                 <span class="material-icons">login</span>
                 Sign In with Google
               </button>

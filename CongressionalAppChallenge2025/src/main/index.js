@@ -11,6 +11,10 @@ const envPath = app.isPackaged
 
 dotenv.config({ path: envPath })
 
+if (!process.env.FIREBASE_API_KEY) {
+  console.error('Missing required environment variables. Check your .env file.');
+}
+
 function createWindow() {
   const mainWindow = new BrowserWindow({
     width: 900,
@@ -23,7 +27,10 @@ function createWindow() {
     webPreferences: {
       preload: join(__dirname, '../preload/index.js'),
       sandbox: false,
-      nodeIntegration: true // Ensure IPC communication
+      nodeIntegration: false,
+      contextIsolation: true, 
+      allowRunningInsecureContent: false, 
+      nativeWindowOpen: true
     }
   })
 

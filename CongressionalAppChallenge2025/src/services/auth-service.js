@@ -26,6 +26,8 @@ class AuthService {
   async logout() {
     try {
       await logOut();
+      // Clear any stored tokens
+      localStorage.removeItem('googleClassroomToken');
     } catch (error) {
       console.error("Logout error:", error);
       throw error;
