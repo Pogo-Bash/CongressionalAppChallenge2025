@@ -69,28 +69,66 @@ const logOut = async () => {
   }
 };
 
+async function checkAuthStatus() {
+    if (!auth) {
+      console.log('Auth not initialized');
+      return null;
+    }
+    
+    return new Promise((resolve) => {
+      // Add an observer for auth state changes
+      const unsubscribe = onAuthStateChanged(auth, (user) => {
+        console.log('Initial auth state check:', user ? 'Signed in' : 'Signed out');
+        unsubscribe(); // Unsubscribe after initial check
+        resolve(user);
+      });
+    });
+}
+
 // Handle the redirect result from Google sign-in
 const handleRedirectResult = async () => {
-  if (!auth) return null;
+  if (!auth) {
+    console.log('Auth not initialized, cannot handle redirect result');
+    return null;
+  }
   
   try {
     console.log('Checking for redirect result...');
+    console.log('Current user before checking redirect:', auth.currentUser ? 'Signed in' : 'Signed out');
+    
     const result = await getRedirectResult(auth);
     
     if (result) {
+      console.log('Successfully got redirect result:', result);
       console.log('User signed in via redirect:', result.user);
       
       // Get the Google access token
       const credential = GoogleAuthProvider.credentialFromResult(result);
       const token = credential.accessToken;
       
+      console.log('Access token obtained:', !!token);
+      
       // Store token for Google Classroom API calls
       localStorage.setItem('googleClassroomToken', token);
-      console.log('Token stored successfully:', !!token);
+      
+      // Force update the UI
+      updateUIForSignedInUser(result.user);
       
       return result.user;
     } else {
-      console.log('No redirect result');
+      console.log('No redirect result, checking if user is already signed in');
+      if (auth.currentUser) {
+        console.log('User is already signed in:', auth.currentUser.displayName || auth.currentUser.email);
+        
+        // Try to get token from saved credentials
+        const user = auth.currentUser;
+        
+        // Force update the UI
+        updateUIForSignedInUser(user);
+        
+        return user;
+      }
+      console.log('No user is currently signed in');
       return null;
     }
   } catch (error) {
@@ -230,11 +268,18 @@ const classroomService = {
 };
 
 // Initialize the application
-async function initApp() { 
+async function initApp() {
   console.log('Initializing application...');
   
   try {
-    // First check for any redirect results
+    // Check auth status first
+    const currentUser = await checkAuthStatus();
+    if (currentUser) {
+      console.log('User is already signed in on startup:', currentUser.displayName || currentUser.email);
+      updateUIForSignedInUser(currentUser);
+    }
+    
+    // Then check for any redirect results
     await handleRedirectResult();
     
     // Then initialize the rest of the app
@@ -246,6 +291,35 @@ async function initApp() {
     initWindowControls();
   } catch (error) {
     console.error('Error during app initialization:', error);
+  }
+}
+
+async function testClassroomAPI() {
+  const token = localStorage.getItem('googleClassroomToken');
+  if (!token) {
+    console.log('No token available for Classroom API test');
+    return;
+  }
+  
+  console.log('Testing Classroom API with token');
+  try {
+    const response = await fetch('https://classroom.googleapis.com/v1/courses?courseStates=ACTIVE', {
+      headers: {
+        'Authorization': `Bearer ${token}`
+      }
+    });
+    
+    if (!response.ok) {
+      console.error('Classroom API test failed with status:', response.status);
+      const errorText = await response.text();
+      console.error('Error response:', errorText);
+      return;
+    }
+    
+    const data = await response.json();
+    console.log('Classroom API test successful, courses:', data);
+  } catch (error) {
+    console.error('Classroom API test error:', error);
   }
 }
 
@@ -266,6 +340,7 @@ if (auth) {
     
     // Update UI directly
     updateUIForSignedInUser(user);
+    testClassroomAPI();
   });
 }
 

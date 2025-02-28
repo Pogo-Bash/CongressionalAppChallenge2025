@@ -21,26 +21,66 @@ googleProvider.addScope('https://www.googleapis.com/auth/classroom.courses.reado
 googleProvider.addScope('https://www.googleapis.com/auth/classroom.coursework.me.readonly');
 googleProvider.addScope('https://www.googleapis.com/auth/classroom.rosters.readonly');
 
+async function checkAuthStatus() {
+    if (!auth) {
+      console.log('Auth not initialized');
+      return null;
+    }
+    
+    return new Promise((resolve) => {
+      // Add an observer for auth state changes
+      const unsubscribe = onAuthStateChanged(auth, (user) => {
+        console.log('Initial auth state check:', user ? 'Signed in' : 'Signed out');
+        unsubscribe(); // Unsubscribe after initial check
+        resolve(user);
+      });
+    });
+}
 
+// Authentication functions
 export const signInWithGoogle = async () => {
     try {
-      // Instead of signInWithPopup, we'll use signInWithRedirect
-      await signInWithRedirect(auth, googleProvider);
-      console.log('Sign-in redirect completed, processing result...');
+      // First try with popup (often works better in Electron)
+      console.log('Starting Google sign-in with popup...');
+      const provider = new GoogleAuthProvider();
       
-      // Get Google access token
-      const credential = GoogleAuthProvider.credentialFromResult(result);
-      const token = credential.accessToken;
+      // Add Google Classroom scopes
+      provider.addScope('https://www.googleapis.com/auth/classroom.courses.readonly');
+      provider.addScope('https://www.googleapis.com/auth/classroom.coursework.me.readonly');
+      provider.addScope('https://www.googleapis.com/auth/classroom.rosters.readonly');
       
-      // Store the token for Google Classroom API calls
-      localStorage.setItem('googleClassroomToken', token);
-      console.log('Sign in successful, token stored');
-      return null; // This will only return after the redirect completes
+      try {
+        const result = await signInWithPopup(auth, provider);
+        console.log('Sign-in successful with popup:', result.user);
+        
+        // Get Google access token
+        const credential = GoogleAuthProvider.credentialFromResult(result);
+        const token = credential.accessToken;
+        
+        // Store token for Google Classroom API calls
+        localStorage.setItem('googleClassroomToken', token);
+        console.log('Access token stored in localStorage');
+        
+        // Force update UI
+        updateUIForSignedInUser(result.user);
+        
+        return result.user;
+      } catch (popupError) {
+        console.error('Popup sign-in failed, trying redirect:', popupError);
+        if (popupError.code === 'auth/popup-blocked') {
+          // If popup is blocked, try redirect
+          await signInWithRedirect(auth, provider);
+          // Code after this won't execute immediately due to redirect
+          return null;
+        } else {
+          throw popupError;
+        }
+      }
     } catch (error) {
       console.error("Error signing in with Google", error);
       throw error;
     }
-  };
+};
 
 export const logOut = async () => {
   try {
