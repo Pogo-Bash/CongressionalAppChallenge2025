@@ -46,22 +46,23 @@ function createWindow() {
   })
 
   mainWindow.webContents.setWindowOpenHandler(({ url }) => {
-    // Allow Google authentication URLs to open in a new window
-    if (url.startsWith('https://accounts.google.com/') || 
-        url.includes('google.com/signin') || 
+    console.log('Window open requested for URL:', url);
+    
+    // Allow Firebase auth handler and Google authentication URLs
+    if (url.includes('firebaseapp.com/__/auth/handler') ||
+        url.includes('accounts.google.com') ||
+        url.includes('apis.google.com/js/api') ||
+        url.includes('google.com/signin') ||
         url.includes('googleusercontent.com')) {
+      console.log('Allowing internal window for auth URL:', url);
       return { action: 'allow' };
     }
     
     // For other URLs, open in external browser
+    console.log('Opening external URL:', url);
     shell.openExternal(url);
     return { action: 'deny' };
   });
-
-  mainWindow.webContents.setWindowOpenHandler((details) => {
-    shell.openExternal(details.url)
-    return { action: 'deny' }
-  })
 
   if (is.dev && process.env['ELECTRON_RENDERER_URL']) {
     mainWindow.loadURL(process.env['ELECTRON_RENDERER_URL'])

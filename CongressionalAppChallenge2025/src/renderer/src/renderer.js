@@ -1,12 +1,15 @@
-// Remove duplicate imports - you're importing authService but also defining it in this file
+// Import theme manager
 import { themeManager } from './theme-manager.js';
 
 // For communication with Electron main process
 const { ipcRenderer } = window.electron || {};
 
 // Firebase configuration from environment variables
+const firebaseConfig = window.env?.firebaseConfig || {};
 
 // Log that we're using environment variables (without exposing the actual values)
+console.log('Using Firebase config from environment variables:', 
+  Object.keys(firebaseConfig).filter(key => !!firebaseConfig[key]).length + ' values configured');
 
 // Import Firebase modules
 import { initializeApp } from 'firebase/app';
@@ -20,17 +23,6 @@ import {
   getRedirectResult
 } from 'firebase/auth';
 import { getFirestore } from 'firebase/firestore';
-
-const firebaseConfig = {
-  apiKey: "AIzaSyDQgTTIzgQOOBzQIvah1FbhntELWUqsCzQ",
-  authDomain: "curriq-84d86.firebaseapp.com",
-  projectId: "curriq-84d86",
-  storageBucket: "curriq-84d86.firebasestorage.app",
-  messagingSenderId: "179922724295",
-  appId: "1:179922724295:web:4c66db70a1fd392a4265e2",
-  measurementId: "G-ES0FMNN76E"
-};
-
 
 // Initialize Firebase
 let app;
@@ -53,18 +45,143 @@ googleProvider.addScope('https://www.googleapis.com/auth/classroom.coursework.me
 googleProvider.addScope('https://www.googleapis.com/auth/classroom.rosters.readonly');
 googleProvider.addScope('https://www.googleapis.com/auth/classroom.profile.emails');
 
-// Authentication functions
-const signInWithGoogle = async () => {
-  try {
-    // Instead of popup, use redirect for better compatibility with Electron
-    console.log('Starting Google sign-in with redirect...');
-    await signInWithRedirect(auth, googleProvider);
-    // Code after this won't execute immediately due to redirect
-  } catch (error) {
-    console.error("Error signing in with Google", error);
-    throw error;
+// Central UI update function
+function updateUI(user) {
+  console.log('Updating UI based on auth state:', user ? 'Signed in' : 'Signed out');
+  
+  const userSection = document.getElementById('user-section');
+  const loginButton = document.getElementById('login-button');
+  
+  if (!userSection || !loginButton) {
+    console.error('Required UI elements not found');
+    return;
   }
-};
+  
+  if (user) {
+    // User is signed in
+    console.log('User signed in, updating UI elements');
+    userSection.style.display = 'flex';
+    loginButton.style.display = 'none';
+    
+    // Update user info if elements exist
+    const userAvatar = document.getElementById('user-avatar');
+    const userName = document.getElementById('user-name');
+    
+    if (userAvatar) {
+      userAvatar.src = user.photoURL || './assets/default-avatar.png';
+      console.log('Set avatar to:', userAvatar.src);
+    }
+    
+    if (userName) {
+      userName.textContent = user.displayName || user.email;
+      console.log('Set username to:', userName.textContent);
+    }
+    
+    // Check if we're in the curriculum section and load data
+    const curriculumSection = document.getElementById('curriculum-section');
+    if (curriculumSection && curriculumSection.classList.contains('active')) {
+      loadCurriculumData();
+    }
+  } else {
+    // User is signed out
+    console.log('User signed out, updating UI elements');
+    userSection.style.display = 'none';
+    loginButton.style.display = 'flex';
+    
+    // Reset curriculum section
+    const curriculumContent = document.getElementById('curriculum-content');
+    const curriculumNotLoggedIn = document.getElementById('curriculum-not-logged-in');
+    const curriculumLoading = document.getElementById('curriculum-loading');
+    
+    if (curriculumContent) curriculumContent.style.display = 'none';
+    if (curriculumNotLoggedIn) curriculumNotLoggedIn.style.display = 'block';
+    if (curriculumLoading) curriculumLoading.style.display = 'none';
+  }
+}
+
+// Legacy function for backward compatibility
+function updateUIForSignedInUser(user) {
+  if (!user) return;
+  
+  console.log('Updating UI for signed in user');
+  
+  // Just call our unified UI update function
+  updateUI(user);
+}
+
+// Function to extract and store token
+function extractAndStoreToken(result) {
+  try {
+    console.log('Extracting token from auth result');
+    
+    if (!result) {
+      console.error('No result provided');
+      return false;
+    }
+    
+    // Get the credential from the result
+    const credential = GoogleAuthProvider.credentialFromResult(result);
+    
+    if (!credential) {
+      console.error('No credential in auth result');
+      return false;
+    }
+    
+    const token = credential.accessToken;
+    
+    if (!token) {
+      console.error('No access token in credential');
+      return false;
+    }
+    
+    // Store the token
+    localStorage.setItem('googleClassroomToken', token);
+    console.log('Successfully stored Google Classroom token');
+    
+    // Also store the token in a variable for immediate use
+    window.googleClassroomToken = token;
+    
+    return true;
+  } catch (error) {
+    console.error('Error extracting token:', error);
+    return false;
+  }
+}
+
+// Authentication functions
+async function signInWithGoogle() {
+  try {
+    console.log('Starting Google sign-in');
+    
+    // Try popup first (works better in Electron)
+    try {
+      console.log('Attempting popup sign-in');
+      const result = await signInWithPopup(auth, googleProvider);
+      console.log('Popup sign-in successful');
+      
+      // Extract and store token (only once)
+      const tokenExtracted = extractAndStoreToken(result);
+      console.log('Token extracted:', tokenExtracted);
+      
+      // Force UI update
+      updateUI(result.user);
+      
+      return result.user;
+    } catch (popupError) {
+      console.warn('Popup sign-in failed:', popupError);
+      
+      // If popup is blocked or fails, try redirect
+      console.log('Trying sign-in with redirect...');
+      await signInWithRedirect(auth, googleProvider);
+      // This will redirect the page, so code after this won't execute
+      return null;
+    }
+  } catch (error) {
+    console.error('Sign-in failed:', error);
+    alert(`Sign-in failed: ${error.message}`);
+    return null;
+  }
+}
 
 const logOut = async () => {
   try {
@@ -78,19 +195,19 @@ const logOut = async () => {
 };
 
 async function checkAuthStatus() {
-    if (!auth) {
-      console.log('Auth not initialized');
-      return null;
-    }
-    
-    return new Promise((resolve) => {
-      // Add an observer for auth state changes
-      const unsubscribe = onAuthStateChanged(auth, (user) => {
-        console.log('Initial auth state check:', user ? 'Signed in' : 'Signed out');
-        unsubscribe(); // Unsubscribe after initial check
-        resolve(user);
-      });
+  if (!auth) {
+    console.log('Auth not initialized');
+    return null;
+  }
+  
+  return new Promise((resolve) => {
+    // Add an observer for auth state changes
+    const unsubscribe = onAuthStateChanged(auth, (user) => {
+      console.log('Initial auth state check:', user ? 'Signed in' : 'Signed out');
+      unsubscribe(); // Unsubscribe after initial check
+      resolve(user);
     });
+  });
 }
 
 // Handle the redirect result from Google sign-in
@@ -102,41 +219,22 @@ const handleRedirectResult = async () => {
   
   try {
     console.log('Checking for redirect result...');
-    console.log('Current user before checking redirect:', auth.currentUser ? 'Signed in' : 'Signed out');
     
     const result = await getRedirectResult(auth);
     
     if (result) {
-      console.log('Successfully got redirect result:', result);
-      console.log('User signed in via redirect:', result.user);
+      console.log('Successfully got redirect result');
       
-      // Get the Google access token
-      const credential = GoogleAuthProvider.credentialFromResult(result);
-      const token = credential.accessToken;
-      
-      console.log('Access token obtained:', !!token);
-      
-      // Store token for Google Classroom API calls
-      localStorage.setItem('googleClassroomToken', token);
+      // Extract and store token
+      const tokenSaved = extractAndStoreToken(result);
+      console.log('Token saved from redirect:', tokenSaved);
       
       // Force update the UI
-      updateUIForSignedInUser(result.user);
+      updateUI(result.user);
       
       return result.user;
     } else {
-      console.log('No redirect result, checking if user is already signed in');
-      if (auth.currentUser) {
-        console.log('User is already signed in:', auth.currentUser.displayName || auth.currentUser.email);
-        
-        // Try to get token from saved credentials
-        const user = auth.currentUser;
-        
-        // Force update the UI
-        updateUIForSignedInUser(user);
-        
-        return user;
-      }
-      console.log('No user is currently signed in');
+      console.log('No redirect result found');
       return null;
     }
   } catch (error) {
@@ -201,6 +299,41 @@ const classroomService = {
     return localStorage.getItem('googleClassroomToken');
   },
   
+  async testToken() {
+    const token = this.getToken();
+    if (!token) {
+      throw new Error('No authentication token available');
+    }
+    
+    try {
+      // Make a simple API call to verify the token works
+      const response = await fetch(`${this.baseUrl}/courses?pageSize=1`, {
+        headers: {
+          'Authorization': `Bearer ${token}`
+        }
+      });
+      
+      if (!response.ok) {
+        const errorText = await response.text();
+        console.error('Token test failed:', errorText);
+        
+        if (response.status === 401) {
+          // Token expired or invalid
+          localStorage.removeItem('googleClassroomToken');
+          throw new Error('Authentication token expired. Please sign in again.');
+        }
+        
+        throw new Error(`API error: ${response.status}`);
+      }
+      
+      console.log('Token test successful');
+      return true;
+    } catch (error) {
+      console.error('Token test error:', error);
+      throw error;
+    }
+  },
+  
   async fetchCourses() {
     const token = this.getToken();
     if (!token) {
@@ -216,12 +349,27 @@ const classroomService = {
       });
       
       if (!response.ok) {
+        const errorText = await response.text();
+        console.error('API error response:', errorText);
+        
+        if (response.status === 401) {
+          localStorage.removeItem('googleClassroomToken');
+          throw new Error('Authentication token expired. Please sign in again.');
+        }
+        
         throw new Error(`Failed to fetch courses: ${response.status}`);
       }
       
       const data = await response.json();
+      console.log('Courses response data:', data);
       this.courseData = data.courses || [];
-      console.log('Courses fetched:', this.courseData);
+      
+      if (!data.courses || data.courses.length === 0) {
+        console.log('No courses found in the response');
+      } else {
+        console.log(`Found ${data.courses.length} courses`);
+      }
+      
       return this.courseData;
     } catch (error) {
       console.error('Error fetching Google Classroom courses:', error);
@@ -251,21 +399,19 @@ const classroomService = {
       });
       
       if (!response.ok) {
+        if (response.status === 401) {
+          localStorage.removeItem('googleClassroomToken');
+          throw new Error('Authentication token expired. Please sign in again.');
+        }
+        
         throw new Error(`Failed to fetch coursework: ${response.status}`);
       }
       
       const data = await response.json();
-      console.log('Coursework fetched:', data.courseWork);
+      console.log('Coursework fetched:', data.courseWork ? data.courseWork.length : 0);
       return data.courseWork || [];
     } catch (error) {
       console.error(`Error fetching coursework for course ${courseId}:`, error);
-      
-      // Handle token expired error
-      if (error.message.includes('401')) {
-        localStorage.removeItem('googleClassroomToken');
-        throw new Error('Google Classroom session expired. Please sign in again.');
-      }
-      
       throw error;
     }
   },
@@ -280,7 +426,14 @@ async function initApp() {
   console.log('Initializing application...');
   
   try {
-    // Initialize theme first
+    // Check for redirect result first
+    console.log('Checking for auth redirect result');
+    const redirectUser = await handleRedirectResult();
+    if (redirectUser) {
+      console.log('User authenticated via redirect');
+    }
+    
+    // Initialize theme
     themeManager.initialize();
     
     // Initialize UI elements
@@ -289,7 +442,7 @@ async function initApp() {
     initSettings();
     initWindowControls();
     
-    // Initialize auth listeners after UI is ready
+    // Initialize auth listeners
     initializeAuthUI();
     
     // Debug token status
@@ -309,6 +462,65 @@ async function initApp() {
   } catch (error) {
     console.error('Error during app initialization:', error);
   }
+}
+
+async function testClassroomAPI() {
+  const token = localStorage.getItem('googleClassroomToken');
+  if (!token) {
+    console.log('No token available for Classroom API test');
+    return;
+  }
+  
+  console.log('Testing Classroom API with token');
+  try {
+    const response = await fetch('https://classroom.googleapis.com/v1/courses?courseStates=ACTIVE', {
+      headers: {
+        'Authorization': `Bearer ${token}`
+      }
+    });
+    
+    if (!response.ok) {
+      console.error('Classroom API test failed with status:', response.status);
+      const errorText = await response.text();
+      console.error('Error response:', errorText);
+      return;
+    }
+    
+    const data = await response.json();
+    console.log('Classroom API test successful, courses:', data);
+  } catch (error) {
+    console.error('Classroom API test error:', error);
+  }
+}
+
+// Set up Firebase auth state listener
+if (auth) {
+  onAuthStateChanged(auth, (user) => {
+    console.log('Auth state changed:', user ? 'User signed in' : 'User signed out');
+    
+    // Update authService state
+    authService.user = user;
+    
+    // Check token status whenever auth state changes
+    if (user) {
+      console.log('User signed in, checking token');
+      const token = localStorage.getItem('googleClassroomToken');
+      console.log('Token in localStorage:', !!token);
+      
+      if (!token) {
+        console.warn('User is signed in but no token is available');
+        // May need to re-authenticate in this case
+      } else {
+        testClassroomAPI();
+      }
+    }
+    
+    // Update UI
+    updateUI(user);
+    
+    // Notify auth listeners
+    authService.notifyListeners();
+  });
 }
 
 function initializeAuthUI() {
@@ -364,218 +576,6 @@ function initializeAuthUI() {
         alert(`Logout failed: ${error.message}`);
       }
     });
-  }
-  
-  // Listen for auth state changes
-  authService.addAuthListener((user) => {
-    if (!userSection || !loginButton) return;
-    
-    if (user) {
-      // User is signed in
-      console.log('User is signed in, updating UI');
-      userSection.style.display = 'flex';
-      loginButton.style.display = 'none';
-      
-      // Update user info
-      if (userAvatar) userAvatar.src = user.photoURL || './assets/default-avatar.png';
-      if (userName) userName.textContent = user.displayName || user.email;
-      
-      // Load Google Classroom data if on curriculum section
-      const curriculumSection = document.getElementById('curriculum-section');
-      if (curriculumSection && curriculumSection.classList.contains('active')) {
-        loadCurriculumData();
-      }
-    } else {
-      // User is signed out
-      console.log('User is signed out, updating UI');
-      userSection.style.display = 'none';
-      loginButton.style.display = 'flex';
-      
-      // Reset curriculum section
-      const curriculumContent = document.getElementById('curriculum-content');
-      const curriculumNotLoggedIn = document.getElementById('curriculum-not-logged-in');
-      const curriculumLoading = document.getElementById('curriculum-loading');
-      
-      if (curriculumContent) curriculumContent.style.display = 'none';
-      if (curriculumNotLoggedIn) curriculumNotLoggedIn.style.display = 'block';
-      if (curriculumLoading) curriculumLoading.style.display = 'none';
-    }
-  });
-}
-
-async function testClassroomAPI() {
-  const token = localStorage.getItem('googleClassroomToken');
-  if (!token) {
-    console.log('No token available for Classroom API test');
-    return;
-  }
-  
-  console.log('Testing Classroom API with token');
-  try {
-    const response = await fetch('https://classroom.googleapis.com/v1/courses?courseStates=ACTIVE', {
-      headers: {
-        'Authorization': `Bearer ${token}`
-      }
-    });
-    
-    if (!response.ok) {
-      console.error('Classroom API test failed with status:', response.status);
-      const errorText = await response.text();
-      console.error('Error response:', errorText);
-      return;
-    }
-    
-    const data = await response.json();
-    console.log('Classroom API test successful, courses:', data);
-  } catch (error) {
-    console.error('Classroom API test error:', error);
-  }
-}
-
-// Set up Firebase auth state listener
-if (auth) {
-  onAuthStateChanged(auth, (user) => {
-    console.log('Auth state changed:', user ? 'User signed in' : 'User signed out');
-    if (user) {
-      console.log('User details:', {
-        displayName: user.displayName,
-        email: user.email,
-        uid: user.uid
-      });
-    }
-    
-    authService.user = user;
-    authService.notifyListeners();
-    
-    // Update UI directly
-    updateUIForSignedInUser(user);
-    testClassroomAPI();
-  });
-}
-
-function initializeAuth() {
-  const userSection = document.getElementById('user-section');
-  const userAvatar = document.getElementById('user-avatar');
-  const userName = document.getElementById('user-name');
-  const loginButton = document.getElementById('login-button');
-  const logoutButton = document.getElementById('logout-button');
-  const curriculumLoginButton = document.getElementById('curriculum-login-button');
-  
-  console.log('Auth elements:', {
-    userSection: !!userSection,
-    userAvatar: !!userAvatar,
-    userName: !!userName,
-    loginButton: !!loginButton,
-    logoutButton: !!logoutButton,
-    curriculumLoginButton: !!curriculumLoginButton
-  });
-  
-  // Handle login clicks
-  if (loginButton) {
-    loginButton.addEventListener('click', async () => {
-      console.log('Login button clicked');
-      try {
-        await authService.login();
-      } catch (error) {
-        console.error('Login failed:', error);
-        alert(`Login failed: ${error.message}`);
-      }
-    });
-  }
-  
-  if (curriculumLoginButton) {
-    curriculumLoginButton.addEventListener('click', async () => {
-      console.log('Curriculum login button clicked');
-      try {
-        await authService.login();
-      } catch (error) {
-        console.error('Login failed:', error);
-        alert(`Login failed: ${error.message}`);
-      }
-    });
-  }
-  
-  // Handle logout
-  if (logoutButton) {
-    logoutButton.addEventListener('click', async () => {
-      console.log('Logout button clicked');
-      try {
-        await authService.logout();
-      } catch (error) {
-        console.error('Logout failed:', error);
-        alert(`Logout failed: ${error.message}`);
-      }
-    });
-  }
-  
-  // Listen for auth state changes
-  authService.addAuthListener((user) => {
-    if (!userSection || !loginButton) return;
-    
-    if (user) {
-      // User is signed in
-      console.log('User is signed in, updating UI');
-      userSection.style.display = 'flex';
-      loginButton.style.display = 'none';
-      
-      // Update user info
-      if (userAvatar) userAvatar.src = user.photoURL || './assets/default-avatar.png';
-      if (userName) userName.textContent = user.displayName || user.email;
-      
-      // Load Google Classroom data if on curriculum section
-      const curriculumSection = document.getElementById('curriculum-section');
-      if (curriculumSection && curriculumSection.classList.contains('active')) {
-        loadCurriculumData();
-      }
-    } else {
-      // User is signed out
-      console.log('User is signed out, updating UI');
-      userSection.style.display = 'none';
-      loginButton.style.display = 'flex';
-      
-      // Reset curriculum section
-      const curriculumContent = document.getElementById('curriculum-content');
-      const curriculumNotLoggedIn = document.getElementById('curriculum-not-logged-in');
-      const curriculumLoading = document.getElementById('curriculum-loading');
-      
-      if (curriculumContent) curriculumContent.style.display = 'none';
-      if (curriculumNotLoggedIn) curriculumNotLoggedIn.style.display = 'block';
-      if (curriculumLoading) curriculumLoading.style.display = 'none';
-    }
-  });
-}
-
-// Debug helper function for UI updates
-function updateUIForSignedInUser(user) {
-  if (!user) return;
-  
-  console.log('Updating UI for signed in user', user);
-  
-  const userSection = document.getElementById('user-section');
-  const loginButton = document.getElementById('login-button');
-  
-  console.log('UI elements:', {
-    userSection: userSection ? 'found' : 'missing',
-    loginButton: loginButton ? 'found' : 'missing'
-  });
-  
-  if (userSection && loginButton) {
-    userSection.style.display = 'flex';
-    loginButton.style.display = 'none';
-    
-    // Update user info if elements exist
-    const userAvatar = document.getElementById('user-avatar');
-    const userName = document.getElementById('user-name');
-    
-    if (userAvatar) {
-      userAvatar.src = user.photoURL || './assets/default-avatar.png';
-      console.log('Set avatar to:', userAvatar.src);
-    }
-    
-    if (userName) {
-      userName.textContent = user.displayName || user.email;
-      console.log('Set username to:', userName.textContent);
-    }
   }
 }
 
@@ -688,7 +688,6 @@ async function loadCurriculumData() {
     });
   }
 }
-
 
 async function viewCourseDetails(courseId) {
   // Implementation for viewing course work and details

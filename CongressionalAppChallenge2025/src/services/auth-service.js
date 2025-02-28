@@ -1,34 +1,52 @@
-import { auth, signInWithGoogle, logOut } from './firebase';
+import { 
+  auth, 
+  signInWithGoogle, 
+  logOut, 
+  handleRedirectResult 
+} from './firebase';
 import { onAuthStateChanged } from 'firebase/auth';
 
 class AuthService {
   constructor() {
-
-    this.handleRedirectResult();
-
     this.user = null;
     this.authListeners = [];
     
     // Set up auth state listener
     onAuthStateChanged(auth, (user) => {
-
-    console.log('Auth state changed:', user ? 'User signed in' : 'User signed out');
-
-    if (user) {
+      console.log('Auth state changed:', user ? 'User signed in' : 'User signed out');
+      
+      if (user) {
         console.log('User details:', {
           displayName: user.displayName,
           email: user.email,
           uid: user.uid
         });
-    }
-
-    this.user = user;
-    this.notifyListeners();
+      }
+      
+      this.user = user;
+      this.notifyListeners();
     });
+    
+    // Check for redirect result after constructor
+    setTimeout(() => this.checkRedirectResult(), 0);
+  }
+  
+  async checkRedirectResult() {
+    try {
+      const user = await handleRedirectResult();
+      if (user) {
+        this.user = user;
+        this.notifyListeners();
+        console.log('Updated user from redirect result');
+      }
+    } catch (error) {
+      console.error('Failed to handle redirect:', error);
+    }
   }
   
   async login() {
     try {
+      console.log('Login requested');
       const user = await signInWithGoogle();
       return user;
     } catch (error) {
@@ -40,8 +58,6 @@ class AuthService {
   async logout() {
     try {
       await logOut();
-      // Clear any stored tokens
-      localStorage.removeItem('googleClassroomToken');
     } catch (error) {
       console.error("Logout error:", error);
       throw error;
@@ -66,29 +82,8 @@ class AuthService {
   }
   
   notifyListeners() {
+    console.log('Notifying auth listeners, isLoggedIn:', !!this.user);
     this.authListeners.forEach(callback => callback(this.user));
-  }
-
-  async handleRedirectResult() {
-    try {
-      const result = await getRedirectResult(auth);
-      if (result) {
-        // User successfully signed in
-        console.log('User signed in via redirect:', result.user);
-        
-        // Get the Google access token
-        const credential = GoogleAuthProvider.credentialFromResult(result);
-        const token = credential.accessToken;
-        
-        // Store token for Google Classroom API calls
-        localStorage.setItem('googleClassroomToken', token);
-        
-        return result.user;
-      }
-    } catch (error) {
-      console.error('Error handling redirect result:', error);
-      throw error;
-    }
   }
 }
 
