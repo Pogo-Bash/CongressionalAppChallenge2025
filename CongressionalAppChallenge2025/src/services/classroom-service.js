@@ -8,6 +8,41 @@ class ClassroomService {
     getToken() {
       return localStorage.getItem('googleClassroomToken');
     }
+
+    async testToken() {
+        const token = this.getToken();
+        if (!token) {
+          throw new Error('No authentication token available');
+        }
+        
+        try {
+          // Make a simple API call to verify the token works
+          const response = await fetch(`${this.baseUrl}/courses?pageSize=1`, {
+            headers: {
+              'Authorization': `Bearer ${token}`
+            }
+          });
+          
+          if (!response.ok) {
+            const errorText = await response.text();
+            console.error('Token test failed:', errorText);
+            
+            if (response.status === 401) {
+              // Token expired or invalid
+              localStorage.removeItem('googleClassroomToken');
+              throw new Error('Authentication token expired. Please sign in again.');
+            }
+            
+            throw new Error(`API error: ${response.status}`);
+          }
+          
+          console.log('Token test successful');
+          return true;
+        } catch (error) {
+          console.error('Token test error:', error);
+          throw error;
+        }
+      }
   
     // Fetch all active courses
     async fetchCourses() {
@@ -32,7 +67,13 @@ class ClassroomService {
           if (!response.ok) {
             const errorText = await response.text();
             console.error('API error response:', errorText);
-            throw new Error(`Failed to fetch courses: ${response.status} - ${errorText}`);
+            
+            if (response.status === 401) {
+              localStorage.removeItem('googleClassroomToken');
+              throw new Error('Authentication token expired. Please sign in again.');
+            }
+            
+            throw new Error(`Failed to fetch courses: ${response.status}`);
           }
           
           const data = await response.json();

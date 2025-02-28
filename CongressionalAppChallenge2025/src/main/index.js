@@ -29,6 +29,7 @@ function createWindow() {
       sandbox: false,
       nodeIntegration: false,
       contextIsolation: true, 
+      webSecurity: true,
       allowRunningInsecureContent: false, 
       nativeWindowOpen: true
     }
@@ -43,6 +44,19 @@ function createWindow() {
       `document.body.classList.add('platform-${process.platform}');`
     );
   })
+
+  mainWindow.webContents.setWindowOpenHandler(({ url }) => {
+    // Allow Google authentication URLs to open in a new window
+    if (url.startsWith('https://accounts.google.com/') || 
+        url.includes('google.com/signin') || 
+        url.includes('googleusercontent.com')) {
+      return { action: 'allow' };
+    }
+    
+    // For other URLs, open in external browser
+    shell.openExternal(url);
+    return { action: 'deny' };
+  });
 
   mainWindow.webContents.setWindowOpenHandler((details) => {
     shell.openExternal(details.url)

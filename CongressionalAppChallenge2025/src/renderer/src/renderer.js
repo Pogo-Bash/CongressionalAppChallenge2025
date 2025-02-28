@@ -5,11 +5,8 @@ import { themeManager } from './theme-manager.js';
 const { ipcRenderer } = window.electron || {};
 
 // Firebase configuration from environment variables
-const firebaseConfig = window.env?.firebaseConfig || {};
 
 // Log that we're using environment variables (without exposing the actual values)
-console.log('Using Firebase config from environment variables:', 
-  Object.keys(firebaseConfig).filter(key => !!firebaseConfig[key]).length + ' values configured');
 
 // Import Firebase modules
 import { initializeApp } from 'firebase/app';
@@ -23,6 +20,17 @@ import {
   getRedirectResult
 } from 'firebase/auth';
 import { getFirestore } from 'firebase/firestore';
+
+const firebaseConfig = {
+  apiKey: "AIzaSyDQgTTIzgQOOBzQIvah1FbhntELWUqsCzQ",
+  authDomain: "curriq-84d86.firebaseapp.com",
+  projectId: "curriq-84d86",
+  storageBucket: "curriq-84d86.firebasestorage.app",
+  messagingSenderId: "179922724295",
+  appId: "1:179922724295:web:4c66db70a1fd392a4265e2",
+  measurementId: "G-ES0FMNN76E"
+};
+
 
 // Initialize Firebase
 let app;
@@ -272,26 +280,127 @@ async function initApp() {
   console.log('Initializing application...');
   
   try {
-    // Check auth status first
-    const currentUser = await checkAuthStatus();
-    if (currentUser) {
-      console.log('User is already signed in on startup:', currentUser.displayName || currentUser.email);
-      updateUIForSignedInUser(currentUser);
-    }
-    
-    // Then check for any redirect results
-    await handleRedirectResult();
-    
-    // Then initialize the rest of the app
+    // Initialize theme first
     themeManager.initialize();
+    
+    // Initialize UI elements
     createFocusChart();
     initNavigation();
     initSettings();
-    initializeAuth();
     initWindowControls();
+    
+    // Initialize auth listeners after UI is ready
+    initializeAuthUI();
+    
+    // Debug token status
+    const token = localStorage.getItem('googleClassroomToken');
+    console.log('Token exists on startup:', !!token);
+    
+    if (token) {
+      try {
+        // Verify token is still valid
+        await classroomService.testToken();
+        console.log('Token is valid');
+      } catch (error) {
+        console.warn('Token validation failed:', error.message);
+        // Don't remove the token here, let the API call handle that
+      }
+    }
   } catch (error) {
     console.error('Error during app initialization:', error);
   }
+}
+
+function initializeAuthUI() {
+  const userSection = document.getElementById('user-section');
+  const userAvatar = document.getElementById('user-avatar');
+  const userName = document.getElementById('user-name');
+  const loginButton = document.getElementById('login-button');
+  const logoutButton = document.getElementById('logout-button');
+  const curriculumLoginButton = document.getElementById('curriculum-login-button');
+  
+  console.log('Auth elements:', {
+    userSection: !!userSection,
+    userAvatar: !!userAvatar,
+    userName: !!userName,
+    loginButton: !!loginButton,
+    logoutButton: !!logoutButton,
+    curriculumLoginButton: !!curriculumLoginButton
+  });
+  
+  // Handle login clicks
+  if (loginButton) {
+    loginButton.addEventListener('click', async () => {
+      console.log('Login button clicked');
+      try {
+        await authService.login();
+      } catch (error) {
+        console.error('Login failed:', error);
+        alert(`Login failed: ${error.message}`);
+      }
+    });
+  }
+  
+  if (curriculumLoginButton) {
+    curriculumLoginButton.addEventListener('click', async () => {
+      console.log('Curriculum login button clicked');
+      try {
+        await authService.login();
+      } catch (error) {
+        console.error('Login failed:', error);
+        alert(`Login failed: ${error.message}`);
+      }
+    });
+  }
+  
+  // Handle logout
+  if (logoutButton) {
+    logoutButton.addEventListener('click', async () => {
+      console.log('Logout button clicked');
+      try {
+        await authService.logout();
+      } catch (error) {
+        console.error('Logout failed:', error);
+        alert(`Logout failed: ${error.message}`);
+      }
+    });
+  }
+  
+  // Listen for auth state changes
+  authService.addAuthListener((user) => {
+    if (!userSection || !loginButton) return;
+    
+    if (user) {
+      // User is signed in
+      console.log('User is signed in, updating UI');
+      userSection.style.display = 'flex';
+      loginButton.style.display = 'none';
+      
+      // Update user info
+      if (userAvatar) userAvatar.src = user.photoURL || './assets/default-avatar.png';
+      if (userName) userName.textContent = user.displayName || user.email;
+      
+      // Load Google Classroom data if on curriculum section
+      const curriculumSection = document.getElementById('curriculum-section');
+      if (curriculumSection && curriculumSection.classList.contains('active')) {
+        loadCurriculumData();
+      }
+    } else {
+      // User is signed out
+      console.log('User is signed out, updating UI');
+      userSection.style.display = 'none';
+      loginButton.style.display = 'flex';
+      
+      // Reset curriculum section
+      const curriculumContent = document.getElementById('curriculum-content');
+      const curriculumNotLoggedIn = document.getElementById('curriculum-not-logged-in');
+      const curriculumLoading = document.getElementById('curriculum-loading');
+      
+      if (curriculumContent) curriculumContent.style.display = 'none';
+      if (curriculumNotLoggedIn) curriculumNotLoggedIn.style.display = 'block';
+      if (curriculumLoading) curriculumLoading.style.display = 'none';
+    }
+  });
 }
 
 async function testClassroomAPI() {
@@ -493,7 +602,6 @@ async function loadCurriculumData() {
   notLoggedIn.style.display = 'none';
   
   try {
-    console.log('Loading curriculum data...');
     const token = classroomService.getToken();
     if (!token) {
       throw new Error('No access token found. Please sign in again.');
@@ -580,6 +688,7 @@ async function loadCurriculumData() {
     });
   }
 }
+
 
 async function viewCourseDetails(courseId) {
   // Implementation for viewing course work and details
