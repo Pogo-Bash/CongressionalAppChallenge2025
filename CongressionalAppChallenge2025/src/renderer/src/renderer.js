@@ -452,6 +452,7 @@ async function initApp() {
     initNavigation();
     initSettings();
     initWindowControls();
+    setupCheckboxListeners();
     
     // Initialize auth listeners
     initializeAuthUI();
@@ -601,6 +602,8 @@ async function loadCurriculumData() {
   const curriculumContent = document.getElementById('curriculum-content');
   const notLoggedIn = document.getElementById('curriculum-not-logged-in');
   const coursesContainer = document.getElementById('courses-container');
+  const generateButtonContainer = document.getElementById('generate-button-container') || 
+    createGenerateButtonContainer();
   
   if (!loadingIndicator || !curriculumContent || !notLoggedIn || !coursesContainer) {
     console.error('Required curriculum DOM elements not found');
@@ -611,6 +614,7 @@ async function loadCurriculumData() {
   loadingIndicator.style.display = 'flex';
   curriculumContent.style.display = 'none';
   notLoggedIn.style.display = 'none';
+  generateButtonContainer.style.display = 'none';
   
   try {
     const token = classroomService.getToken();
@@ -642,22 +646,34 @@ async function loadCurriculumData() {
       });
     } else {
       console.log(`Displaying ${courses.length} courses`);
-      // Display each course
+      
+      // Add a "Select All" option
+      const selectAllContainer = document.createElement('div');
+      selectAllContainer.className = 'select-all-container';
+      selectAllContainer.innerHTML = `
+        <label class="select-all-label">
+          <input type="checkbox" id="select-all-courses" class="course-checkbox">
+          <span>Select All Courses</span>
+        </label>
+      `;
+      coursesContainer.appendChild(selectAllContainer);
+      
+      // Display each course with checkbox
       courses.forEach(course => {
-        const courseCard = document.createElement('div');
-        courseCard.className = 'course-card';
-        courseCard.innerHTML = `
-          <div class="course-name">${course.name}</div>
-          <div class="course-section">${course.section || ''}</div>
-          <div class="course-description">${course.description || 'No description available'}</div>
-        `;
-        
-        // Add click handler to view course details
-        courseCard.addEventListener('click', () => {
-          viewCourseDetails(course.id);
-        });
-        
+        const courseCard = createCourseCard(course);
         coursesContainer.appendChild(courseCard);
+      });
+      
+      // Add event listeners for checkboxes
+      setupCheckboxListeners();
+      
+      // Add event listeners for view details buttons
+      document.querySelectorAll('.view-details-btn').forEach(button => {
+        button.addEventListener('click', (e) => {
+          e.stopPropagation();
+          const courseId = button.dataset.courseId;
+          viewCourseDetails(courseId);
+        });
       });
     }
     
@@ -700,18 +716,495 @@ async function loadCurriculumData() {
   }
 }
 
-async function viewCourseDetails(courseId) {
-  // Implementation for viewing course work and details
+function createCourseCard(course) {
+  const courseCard = document.createElement('div');
+  courseCard.className = 'course-card';
+  courseCard.dataset.courseId = course.id;
+  
+  courseCard.innerHTML = `
+    <div class="course-header">
+      <label class="course-select" title="Select this course">
+        <input type="checkbox" class="course-checkbox" data-course-id="${course.id}">
+        <span class="checkmark"></span>
+      </label>
+      <div class="course-name">${course.name}</div>
+    </div>
+    <div class="course-section">${course.section || ''}</div>
+    <div class="course-description">${course.description || 'No description available'}</div>
+    <button class="view-details-btn" data-course-id="${course.id}">
+      <span class="material-icons">visibility</span>
+      View Details
+    </button>
+  `;
+  
+  return courseCard;
+}
+
+function createGenerateButtonContainer() {
+  const curriculumSection = document.getElementById('curriculum-section');
+  const container = document.createElement('div');
+  container.id = 'generate-button-container';
+  container.className = 'generate-button-container';
+  container.style.display = 'none';
+  
+  if (curriculumSection) {
+    curriculumSection.appendChild(container);
+  }
+  
+  return container;
+}
+
+// Updated setupCheckboxListeners function to fix checkbox interactions
+function setupCheckboxListeners() {
+  // Select All checkbox
+  const selectAllCheckbox = document.getElementById('select-all-courses');
+  const courseCheckboxes = document.querySelectorAll('.course-checkbox:not(#select-all-courses)');
+  
+  if (selectAllCheckbox) {
+    selectAllCheckbox.addEventListener('change', function() {
+      courseCheckboxes.forEach(checkbox => {
+        checkbox.checked = this.checked;
+      });
+      updateGenerateButton();
+    });
+    
+    // Make sure the label click is propagated to the checkbox
+    const selectAllLabel = selectAllCheckbox.closest('.select-all-label');
+    if (selectAllLabel) {
+      selectAllLabel.addEventListener('click', (e) => {
+        // This prevents the card click handler from toggling it again
+        e.stopPropagation();
+      });
+    }
+  }
+  
+  // Individual course checkboxes
+  courseCheckboxes.forEach(checkbox => {
+    checkbox.addEventListener('change', function() {
+      updateGenerateButton();
+      
+      // Update "Select All" checkbox state
+      if (selectAllCheckbox) {
+        const allChecked = Array.from(courseCheckboxes).every(cb => cb.checked);
+        const someChecked = Array.from(courseCheckboxes).some(cb => cb.checked);
+        
+        selectAllCheckbox.checked = allChecked;
+        selectAllCheckbox.indeterminate = someChecked && !allChecked;
+      }
+    });
+    
+    // Make sure the label click is propagated to the checkbox
+    const checkboxLabel = checkbox.closest('.course-select');
+    if (checkboxLabel) {
+      checkboxLabel.addEventListener('click', (e) => {
+        // This prevents the card click handler from toggling it again
+        e.stopPropagation();
+      });
+    }
+  });
+  
+  // Update the card click handler to not trigger when clicking on buttons or labels
+  document.querySelectorAll('.course-card').forEach(card => {
+    card.addEventListener('click', (e) => {
+      // Only handle card clicks if not clicking on a button, checkbox, or label
+      if (
+        !e.target.closest('.view-details-btn') && 
+        !e.target.closest('.course-select') && 
+        !e.target.closest('.course-checkbox')
+      ) {
+        const checkbox = card.querySelector('.course-checkbox');
+        if (checkbox) {
+          checkbox.checked = !checkbox.checked;
+          
+          // Trigger change event
+          const event = new Event('change');
+          checkbox.dispatchEvent(event);
+        }
+      }
+    });
+  });
+  
+  // Add specific handler for the checkmark spans
+  document.querySelectorAll('.checkmark').forEach(checkmark => {
+    checkmark.addEventListener('click', (e) => {
+      // Find the associated checkbox
+      const checkbox = e.target.closest('.course-select').querySelector('.course-checkbox');
+      if (checkbox) {
+        // Toggle checkbox
+        checkbox.checked = !checkbox.checked;
+        
+        // Trigger change event
+        const event = new Event('change');
+        checkbox.dispatchEvent(event);
+        
+        // Prevent card click from handling this
+        e.stopPropagation();
+      }
+    });
+  });
+  
+  // Ensure the "View Details" buttons don't toggle checkboxes
+  document.querySelectorAll('.view-details-btn').forEach(button => {
+    button.addEventListener('click', (e) => {
+      e.stopPropagation();
+      const courseId = button.dataset.courseId;
+      viewCourseDetails(courseId);
+    });
+  });
+}
+
+function updateGenerateButton() {
+  const generateButtonContainer = document.getElementById('generate-button-container');
+  const selectedCourses = getSelectedCourses();
+  
+  if (!generateButtonContainer) {
+    return;
+  }
+  
+  if (selectedCourses.length > 0) {
+    generateButtonContainer.style.display = 'block';
+    generateButtonContainer.innerHTML = `
+      <div class="selected-count">${selectedCourses.length} course${selectedCourses.length === 1 ? '' : 's'} selected</div>
+      <button id="generate-curriculum-btn" class="primary-button">
+        <span class="material-icons">auto_awesome</span>
+        Generate Curriculum
+      </button>
+    `;
+    
+    // Add event listener for generate button
+    document.getElementById('generate-curriculum-btn')?.addEventListener('click', () => {
+      generateCurriculum(selectedCourses);
+    });
+  } else {
+    generateButtonContainer.style.display = 'none';
+  }
+}
+
+function getSelectedCourses() {
+  const selectedCheckboxes = document.querySelectorAll('.course-checkbox:checked:not(#select-all-courses)');
+  return Array.from(selectedCheckboxes).map(checkbox => checkbox.dataset.courseId);
+}
+
+async function generateCurriculum(courseIds) {
+  if (!courseIds || courseIds.length === 0) {
+    alert('Please select at least one course to generate a curriculum.');
+    return;
+  }
+  
+  const generateButton = document.getElementById('generate-curriculum-btn');
+  const generateButtonContainer = document.getElementById('generate-button-container');
+  
+  if (generateButton) {
+    // Show loading state
+    generateButton.disabled = true;
+    generateButton.innerHTML = `
+      <span class="material-icons rotating">sync</span>
+      Generating...
+    `;
+  }
+  
   try {
+    // Collect course details for selected courses
+    const selectedCourses = [];
+    for (const courseId of courseIds) {
+      try {
+        const courseWork = await classroomService.fetchCourseWork(courseId);
+        const courseElement = document.querySelector(`.course-card[data-course-id="${courseId}"]`);
+        const courseName = courseElement?.querySelector('.course-name')?.textContent || 'Unknown Course';
+        
+        selectedCourses.push({
+          id: courseId,
+          name: courseName,
+          courseWork: courseWork
+        });
+      } catch (error) {
+        console.error(`Error fetching course work for course ${courseId}:`, error);
+      }
+    }
+    
+    // Show success and navigate to the new curriculum view
+    showGeneratedCurriculum(selectedCourses);
+  } catch (error) {
+    console.error('Error generating curriculum:', error);
+    alert(`Failed to generate curriculum: ${error.message}`);
+    
+    if (generateButton) {
+      // Reset button state
+      generateButton.disabled = false;
+      generateButton.innerHTML = `
+        <span class="material-icons">auto_awesome</span>
+        Generate Curriculum
+      `;
+    }
+  }
+}
+
+function showGeneratedCurriculum(courses) {
+  // Hide courses container and show curriculum view
+  const coursesContainer = document.getElementById('courses-container');
+  const generateButtonContainer = document.getElementById('generate-button-container');
+  
+  if (coursesContainer) {
+    coursesContainer.style.display = 'none';
+  }
+  
+  if (generateButtonContainer) {
+    generateButtonContainer.style.display = 'none';
+  }
+  
+  // Create curriculum container if it doesn't exist
+  let curriculumContainer = document.getElementById('generated-curriculum-container');
+  if (!curriculumContainer) {
+    curriculumContainer = document.createElement('div');
+    curriculumContainer.id = 'generated-curriculum-container';
+    curriculumContainer.className = 'generated-curriculum-container';
+    
+    const curriculumContent = document.getElementById('curriculum-content');
+    if (curriculumContent) {
+      curriculumContent.appendChild(curriculumContainer);
+    }
+  }
+  
+  // Generate curriculum content
+  const courseCount = courses.length;
+  const totalAssignments = courses.reduce((total, course) => total + (course.courseWork?.length || 0), 0);
+  
+  curriculumContainer.innerHTML = `
+    <div class="curriculum-header">
+      <h3>Your Personalized Curriculum</h3>
+      <button id="back-to-courses" class="secondary-button">
+        <span class="material-icons">arrow_back</span>
+        Back to Courses
+      </button>
+    </div>
+    
+    <div class="curriculum-summary">
+      <div class="summary-card">
+        <div class="summary-icon"><span class="material-icons">school</span></div>
+        <div class="summary-count">${courseCount}</div>
+        <div class="summary-label">Courses</div>
+      </div>
+      <div class="summary-card">
+        <div class="summary-icon"><span class="material-icons">assignment</span></div>
+        <div class="summary-count">${totalAssignments}</div>
+        <div class="summary-label">Assignments</div>
+      </div>
+      <div class="summary-card">
+        <div class="summary-icon"><span class="material-icons">schedule</span></div>
+        <div class="summary-count">${Math.ceil(totalAssignments * 1.5)}</div>
+        <div class="summary-label">Est. Hours</div>
+      </div>
+    </div>
+    
+    <div class="curriculum-timeline">
+      <h4>Study Timeline</h4>
+      <div class="timeline-container">
+        ${generateTimelineHTML(courses)}
+      </div>
+    </div>
+    
+    <div class="curriculum-courses">
+      <h4>Course Materials</h4>
+      ${courses.map(course => `
+        <div class="curriculum-course-card">
+          <h5>${course.name}</h5>
+          <div class="course-materials">
+            ${course.courseWork && course.courseWork.length > 0 
+              ? `<ul class="materials-list">
+                  ${course.courseWork.map(work => `
+                    <li class="material-item">
+                      <span class="material-icons">${getWorkTypeIcon(work.workType)}</span>
+                      <div class="material-details">
+                        <div class="material-title">${work.title}</div>
+                        ${work.dueDate ? `<div class="material-due">Due: ${formatDate(work.dueDate)}</div>` : ''}
+                      </div>
+                    </li>
+                  `).join('')}
+                </ul>`
+              : '<p class="empty-message">No course materials available</p>'
+            }
+          </div>
+        </div>
+      `).join('')}
+    </div>
+  `;
+  
+  // Display the curriculum container
+  curriculumContainer.style.display = 'block';
+  
+  // Add event listener for back button
+  document.getElementById('back-to-courses')?.addEventListener('click', () => {
+    curriculumContainer.style.display = 'none';
+    
+    if (coursesContainer) {
+      coursesContainer.style.display = 'grid';
+    }
+    
+    updateGenerateButton();
+  });
+}
+
+function generateTimelineHTML(courses) {
+  // Get all assignments with due dates
+  const assignmentsWithDates = [];
+  
+  courses.forEach(course => {
+    if (course.courseWork && course.courseWork.length > 0) {
+      course.courseWork.forEach(work => {
+        if (work.dueDate) {
+          assignmentsWithDates.push({
+            title: work.title,
+            courseName: course.name,
+            dueDate: createDateFromDueDate(work.dueDate),
+            workType: work.workType || 'ASSIGNMENT'
+          });
+        }
+      });
+    }
+  });
+  
+  // Sort assignments by due date
+  assignmentsWithDates.sort((a, b) => a.dueDate - b.dueDate);
+  
+  // Group assignments by week
+  const today = new Date();
+  const weekMilliseconds = 7 * 24 * 60 * 60 * 1000;
+  const weeks = [];
+  
+  // Create 4 weeks starting from today
+  for (let i = 0; i < 4; i++) {
+    const startDate = new Date(today.getTime() + (i * weekMilliseconds));
+    const endDate = new Date(startDate.getTime() + weekMilliseconds - 1);
+    
+    weeks.push({
+      startDate,
+      endDate,
+      assignments: []
+    });
+  }
+  
+  // Assign each assignment to a week
+  assignmentsWithDates.forEach(assignment => {
+    for (const week of weeks) {
+      if (assignment.dueDate >= week.startDate && assignment.dueDate <= week.endDate) {
+        week.assignments.push(assignment);
+        break;
+      }
+    }
+  });
+  
+  // Generate HTML for timeline
+  return `
+    <div class="timeline">
+      ${weeks.map((week, index) => `
+        <div class="timeline-week">
+          <div class="timeline-week-header">
+            <div class="week-number">Week ${index + 1}</div>
+            <div class="week-dates">${formatDateShort(week.startDate)} - ${formatDateShort(week.endDate)}</div>
+          </div>
+          <div class="timeline-assignments">
+            ${week.assignments.length > 0 
+              ? week.assignments.map(assignment => `
+                <div class="timeline-assignment">
+                  <div class="assignment-icon">
+                    <span class="material-icons">${getWorkTypeIcon(assignment.workType)}</span>
+                  </div>
+                  <div class="assignment-details">
+                    <div class="assignment-title">${assignment.title}</div>
+                    <div class="assignment-course">${assignment.courseName}</div>
+                    <div class="assignment-due">Due: ${formatDateShort(assignment.dueDate)}</div>
+                  </div>
+                </div>
+              `).join('')
+              : '<div class="empty-week">No assignments due this week</div>'
+            }
+          </div>
+        </div>
+      `).join('')}
+    </div>
+  `;
+}
+
+function createDateFromDueDate(dueDate) {
+  return new Date(
+    dueDate.year, 
+    (dueDate.month || 1) - 1, 
+    dueDate.day || 1
+  );
+}
+
+function formatDateShort(date) {
+  return new Intl.DateTimeFormat('en-US', { 
+    month: 'short', 
+    day: 'numeric' 
+  }).format(date);
+}
+
+function getWorkTypeIcon(workType) {
+  switch (workType) {
+    case 'ASSIGNMENT':
+      return 'assignment';
+    case 'SHORT_ANSWER_QUESTION':
+      return 'question_answer';
+    case 'MULTIPLE_CHOICE_QUESTION':
+      return 'quiz';
+    case 'QUIZ':
+      return 'quiz';
+    case 'TEST':
+      return 'fact_check';
+    case 'MATERIAL':
+      return 'book';
+    default:
+      return 'assignment';
+  }
+}
+
+// Helper function to format date
+function formatDate(dateObj) {
+  if (!dateObj) return 'No due date';
+  
+  try {
+    const date = createDateFromDueDate(dateObj);
+    return date.toLocaleDateString('en-US', { 
+      weekday: 'short',
+      month: 'short', 
+      day: 'numeric'
+    });
+  } catch (e) {
+    return 'Invalid date';
+  }
+}
+
+// Updated viewCourseDetails function that properly displays a modal
+async function viewCourseDetails(courseId) {
+  try {
+    // Show loading indicator
+    const loadingIndicator = document.createElement('div');
+    loadingIndicator.className = 'loading-indicator';
+    loadingIndicator.innerHTML = `
+      <span class="material-icons rotating">sync</span>
+      <p>Loading course details...</p>
+    `;
+    document.body.appendChild(loadingIndicator);
+    
+    // Fetch course work data
     const courseWork = await classroomService.fetchCourseWork(courseId);
     
-    // Create a modal to display course work
+    // Remove loading indicator
+    document.body.removeChild(loadingIndicator);
+    
+    // Get course name
+    const courseElement = document.querySelector(`.course-card[data-course-id="${courseId}"]`);
+    const courseName = courseElement?.querySelector('.course-name')?.textContent || 'Course Details';
+    
+    // Create the modal
     const modal = document.createElement('div');
     modal.className = 'modal';
+    modal.id = `course-details-modal-${courseId}`;
     modal.innerHTML = `
       <div class="modal-content">
         <div class="modal-header">
-          <h2>Course Details</h2>
+          <h2>${courseName}</h2>
           <button class="close-button">&times;</button>
         </div>
         <div class="modal-body">
@@ -721,12 +1214,17 @@ async function viewCourseDetails(courseId) {
               '<p class="empty-state">No assignments or materials found for this course.</p>' : 
               courseWork.map(item => `
                 <div class="coursework-item">
-                  <div class="coursework-title">${item.title}</div>
-                  <div class="coursework-description">${item.description || ''}</div>
-                  <div class="coursework-type">Type: ${item.workType || 'Not specified'}</div>
-                  ${item.dueDate ? 
-                    `<div class="coursework-due">Due: ${formatDate(item.dueDate)}</div>` : 
-                    ''}
+                  <div class="coursework-title">
+                    <span class="material-icons">${getWorkTypeIcon(item.workType)}</span>
+                    ${item.title}
+                  </div>
+                  ${item.description ? 
+                    `<div class="coursework-description">${item.description}</div>` : ''}
+                  <div class="coursework-meta">
+                    <span class="coursework-type">${item.workType || 'Assignment'}</span>
+                    ${item.dueDate ? 
+                      `<span class="coursework-due">Due: ${formatDate(item.dueDate)}</span>` : ''}
+                  </div>
                 </div>
               `).join('')}
           </div>
@@ -734,40 +1232,89 @@ async function viewCourseDetails(courseId) {
       </div>
     `;
     
+    // Add the modal to the body
     document.body.appendChild(modal);
+    
+    // Force a reflow before adding the active class (for animation)
+    void modal.offsetWidth;
+    
+    // Show the modal with animation
+    setTimeout(() => {
+      modal.classList.add('active');
+    }, 10);
     
     // Add event listener to close button
     modal.querySelector('.close-button').addEventListener('click', () => {
-      document.body.removeChild(modal);
+      closeModal(modal);
     });
     
-    // Close modal when clicking outside
+    // Close modal when clicking outside of content
     modal.addEventListener('click', (event) => {
       if (event.target === modal) {
-        document.body.removeChild(modal);
+        closeModal(modal);
       }
     });
+    
+    // Add keyboard events for accessibility
+    document.addEventListener('keydown', function escKeyHandler(e) {
+      if (e.key === 'Escape') {
+        closeModal(modal);
+        document.removeEventListener('keydown', escKeyHandler);
+      }
+    });
+    
   } catch (error) {
     console.error('Error loading course details:', error);
-    alert(`Error loading course details: ${error.message}`);
+    
+    // Show error in a clean modal
+    const errorModal = document.createElement('div');
+    errorModal.className = 'modal active';
+    errorModal.innerHTML = `
+      <div class="modal-content">
+        <div class="modal-header">
+          <h2>Error</h2>
+          <button class="close-button">&times;</button>
+        </div>
+        <div class="modal-body">
+          <p>Failed to load course details: ${error.message}</p>
+          <button class="primary-button" id="retry-course-details">
+            <span class="material-icons">refresh</span>
+            Retry
+          </button>
+        </div>
+      </div>
+    `;
+    
+    document.body.appendChild(errorModal);
+    
+    // Set up event listeners for error modal
+    errorModal.querySelector('.close-button').addEventListener('click', () => {
+      closeModal(errorModal);
+    });
+    
+    errorModal.querySelector('#retry-course-details')?.addEventListener('click', () => {
+      closeModal(errorModal);
+      viewCourseDetails(courseId);
+    });
+    
+    errorModal.addEventListener('click', (event) => {
+      if (event.target === errorModal) {
+        closeModal(errorModal);
+      }
+    });
   }
 }
 
-// Helper function to format date
-function formatDate(dateObj) {
-  if (!dateObj) return 'No due date';
+// Helper function to close modal with animation
+function closeModal(modalElement) {
+  modalElement.classList.remove('active');
   
-  try {
-    const date = new Date(
-      dateObj.year,
-      (dateObj.month || 1) - 1,
-      dateObj.day || 1
-    );
-    
-    return date.toLocaleDateString();
-  } catch (e) {
-    return 'Invalid date';
-  }
+  // Wait for animation to complete before removing from DOM
+  setTimeout(() => {
+    if (document.body.contains(modalElement)) {
+      document.body.removeChild(modalElement);
+    }
+  }, 300); // Match this to your CSS transition duration
 }
 
 // For the chart (Placeholder)

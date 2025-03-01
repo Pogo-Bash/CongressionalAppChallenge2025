@@ -152,6 +152,7 @@
               <span class="material-icons rotating">sync</span>
               <p>Loading your courses...</p>
             </div>
+            
             <div id="curriculum-not-logged-in" class="curriculum-content">
               <p>To access your personalized curriculum, please sign in with your Google account. This will allow us to connect to Google Classroom and generate a tailored learning plan just for you.</p>
               <button id="curriculum-login-button" class="primary-button">
@@ -159,9 +160,18 @@
                 Sign In with Google
               </button>
             </div>
+            
             <div id="curriculum-content" class="curriculum-content" style="display: none;">
               <div id="courses-container" class="courses-container">
                 <!-- Courses will be added here dynamically -->
+              </div>
+              
+              <div id="generate-button-container" class="generate-button-container" style="display: none;">
+                <!-- Generate button will appear here when courses are selected -->
+              </div>
+              
+              <div id="generated-curriculum-container" class="generated-curriculum-container" style="display: none;">
+                <!-- Generated curriculum will be displayed here -->
               </div>
             </div>
           </section>
