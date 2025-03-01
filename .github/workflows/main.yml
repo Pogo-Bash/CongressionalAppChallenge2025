@@ -1,0 +1,38 @@
+name: Create .env File
+
+on:
+  push:
+    branches:
+      - main
+
+jobs:
+  setup-env:
+    runs-on: ${{ matrix.os }}
+    strategy:
+      matrix:
+        os: [ubuntu-latest, windows-latest, macos-latest]
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+      
+      - name: Create .env file
+        run: |
+          echo "VITE_FIREBASE_API_KEY=${{ secrets.FIREBASE_API_KEY }}" >> .env
+          echo "VITE_FIREBASE_APP_ID=${{ secrets.FIREBASE_APP_ID }}" >> .env
+          echo "VITE_FIREBASE_AUTH_DOMAIN=${{ secrets.FIREBASE_AUTH_DOMAIN }}" >> .env
+          echo "VITE_FIREBASE_MEASUREMENTID=${{ secrets.FIREBASE_MEASUREMENTID }}" >> .env
+          echo "VITE_FIREBASE_MESSAGING_SENDER_ID=${{ secrets.FIREBASE_MESSAGING_SENDER_ID }}" >> .env
+          echo "VITE_FIREBASE_PROJECT_ID=${{ secrets.FIREBASE_PROJECT_ID }}" >> .env
+          echo "VITE_FIREBASE_STORAGE_BUCKET=${{ secrets.FIREBASE_STORAGE_BUCKET }}" >> .env
+          echo "VITE_GOOGLE_CLASSROOM_API_KEY=${{ secrets.GOOGLE_CLASSROOM_API_KEY }}" >> .env
+          echo "VITE_GOOGLE_OAUTH_CLIENT_ID=${{ secrets.GOOGLE_OAUTH_CLIENT_ID }}" >> .env
+
+      - name: Verify .env file
+        run: cat .env
+
+      - name: Persist .env file
+        uses: actions/upload-artifact@v4
+        with:
+          name: env-file
+          path: .env
