@@ -1,0 +1,167 @@
+name: Curriq Build Pipeline
+
+on:
+  push:
+    branches:
+      - main
+      - develop
+  pull_request:
+    branches:
+      - main
+      - develop
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Debug file structure
+        run: |
+          echo "Current directory: $(pwd)"
+          echo "Directory contents:"
+          ls -la
+          echo "Searching for package.json:"
+          find . -name "package.json" -type f
+
+      - name: Change to project directory
+        run: |
+          if [ -d "CongressionalAppChallenge2025" ]; then
+            cd CongressionalAppChallenge2025
+            echo "Changed to CongressionalAppChallenge2025 directory"
+            echo "Directory contents:"
+            ls -la
+          else
+            echo "CongressionalAppChallenge2025 directory not found!"
+            echo "Available directories:"
+            ls -la
+          fi
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: "18.x"
+
+      - name: Create .env file with fallback values
+        working-directory: CongressionalAppChallenge2025
+        run: |
+          echo "# Environment for CI build" > .env
+          echo "FIREBASE_API_KEY=${FIREBASE_API_KEY:-dummy-api-key}" >> .env
+          echo "FIREBASE_APP_ID=${FIREBASE_APP_ID:-1:123456789:web:abcdef1234567890}" >> .env
+          echo "FIREBASE_AUTH_DOMAIN=${FIREBASE_AUTH_DOMAIN:-project-id.firebaseapp.com}" >> .env
+          echo "FIREBASE_MEASUREMENT_ID=${FIREBASE_MEASUREMENT_ID:-G-ABCDEF1234}" >> .env
+          echo "FIREBASE_MESSAGING_SENDER_ID=${FIREBASE_MESSAGING_SENDER_ID:-123456789}" >> .env
+          echo "FIREBASE_PROJECT_ID=${FIREBASE_PROJECT_ID:-project-id}" >> .env
+          echo "FIREBASE_STORAGE_BUCKET=${FIREBASE_STORAGE_BUCKET:-project-id.appspot.com}" >> .env
+          echo "GOOGLE_CLASSROOM_API_KEY=${GOOGLE_CLASSROOM_API_KEY:-dummy-google-api-key}" >> .env
+          echo "GOOGLE_OAUTH_CLIENT_ID=${GOOGLE_OAUTH_CLIENT_ID:-dummy-oauth-client-id}" >> .env
+        env:
+          FIREBASE_API_KEY: ${{ secrets.FIREBASE_API_KEY }}
+          FIREBASE_APP_ID: ${{ secrets.FIREBASE_APP_ID }}
+          FIREBASE_AUTH_DOMAIN: ${{ secrets.FIREBASE_AUTH_DOMAIN }}
+          FIREBASE_MEASUREMENT_ID: ${{ secrets.FIREBASE_MEASUREMENT_ID }}
+          FIREBASE_MESSAGING_SENDER_ID: ${{ secrets.FIREBASE_MESSAGING_SENDER_ID }}
+          FIREBASE_PROJECT_ID: ${{ secrets.FIREBASE_PROJECT_ID }}
+          FIREBASE_STORAGE_BUCKET: ${{ secrets.FIREBASE_STORAGE_BUCKET }}
+          GOOGLE_CLASSROOM_API_KEY: ${{ secrets.GOOGLE_CLASSROOM_API_KEY }}
+          GOOGLE_OAUTH_CLIENT_ID: ${{ secrets.GOOGLE_OAUTH_CLIENT_ID }}
+
+      - name: Install dependencies
+        working-directory: CongressionalAppChallenge2025
+        run: npm install
+
+      - name: Create required directories
+        working-directory: CongressionalAppChallenge2025
+        run: |
+          mkdir -p src/shared
+          mkdir -p mobile/www/shared
+
+      - name: Copy shared files
+        working-directory: CongressionalAppChallenge2025
+        run: npm run copy-shared
+        continue-on-error: true
+
+      - name: Lint code
+        working-directory: CongressionalAppChallenge2025
+        run: npm run lint
+        continue-on-error: true
+
+      - name: Build Electron application
+        working-directory: CongressionalAppChallenge2025
+        run: npm run build
+        continue-on-error: true
+
+      - name: Upload build artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: app-build
+          path: CongressionalAppChallenge2025/out
+          if-no-files-found: warn
+          retention-days: 7
+
+  mobile-build:
+    needs: build
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: "18.x"
+
+      - name: Create .env file with fallback values
+        working-directory: CongressionalAppChallenge2025
+        run: |
+          echo "# Environment for mobile build" > .env
+          echo "FIREBASE_API_KEY=${FIREBASE_API_KEY:-dummy-api-key}" >> .env
+          echo "FIREBASE_APP_ID=${FIREBASE_APP_ID:-1:123456789:web:abcdef1234567890}" >> .env
+          echo "FIREBASE_AUTH_DOMAIN=${FIREBASE_AUTH_DOMAIN:-project-id.firebaseapp.com}" >> .env
+          echo "FIREBASE_MEASUREMENT_ID=${FIREBASE_MEASUREMENT_ID:-G-ABCDEF1234}" >> .env
+          echo "FIREBASE_MESSAGING_SENDER_ID=${FIREBASE_MESSAGING_SENDER_ID:-123456789}" >> .env
+          echo "FIREBASE_PROJECT_ID=${FIREBASE_PROJECT_ID:-project-id}" >> .env
+          echo "FIREBASE_STORAGE_BUCKET=${FIREBASE_STORAGE_BUCKET:-project-id.appspot.com}" >> .env
+          echo "GOOGLE_CLASSROOM_API_KEY=${GOOGLE_CLASSROOM_API_KEY:-dummy-google-api-key}" >> .env
+          echo "GOOGLE_OAUTH_CLIENT_ID=${GOOGLE_OAUTH_CLIENT_ID:-dummy-oauth-client-id}" >> .env
+        env:
+          FIREBASE_API_KEY: ${{ secrets.FIREBASE_API_KEY }}
+          FIREBASE_APP_ID: ${{ secrets.FIREBASE_APP_ID }}
+          FIREBASE_AUTH_DOMAIN: ${{ secrets.FIREBASE_AUTH_DOMAIN }}
+          FIREBASE_MEASUREMENT_ID: ${{ secrets.FIREBASE_MEASUREMENT_ID }}
+          FIREBASE_MESSAGING_SENDER_ID: ${{ secrets.FIREBASE_MESSAGING_SENDER_ID }}
+          FIREBASE_PROJECT_ID: ${{ secrets.FIREBASE_PROJECT_ID }}
+          FIREBASE_STORAGE_BUCKET: ${{ secrets.FIREBASE_STORAGE_BUCKET }}
+          GOOGLE_CLASSROOM_API_KEY: ${{ secrets.GOOGLE_CLASSROOM_API_KEY }}
+          GOOGLE_OAUTH_CLIENT_ID: ${{ secrets.GOOGLE_OAUTH_CLIENT_ID }}
+
+      - name: Install dependencies
+        working-directory: CongressionalAppChallenge2025
+        run: npm install
+
+      - name: Create required directories
+        working-directory: CongressionalAppChallenge2025
+        run: |
+          mkdir -p src/shared
+          mkdir -p mobile/www/shared
+
+      - name: Copy shared files
+        working-directory: CongressionalAppChallenge2025
+        run: npm run copy-shared
+        continue-on-error: true
+
+      - name: Build mobile web app
+        working-directory: CongressionalAppChallenge2025
+        run: npm run mobile:build
+        continue-on-error: true
+
+      - name: Upload mobile build
+        uses: actions/upload-artifact@v4
+        with:
+          name: curriq-mobile-web
+          path: CongressionalAppChallenge2025/mobile/www
+          if-no-files-found: warn
+          retention-days: 30

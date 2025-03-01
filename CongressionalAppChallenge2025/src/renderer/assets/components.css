@@ -1,5 +1,7 @@
 /* components.css - Universal layouts and component structures */
 
+@import url('https://fonts.googleapis.com/css2?family=Lora:ital,wght@0,400..700;1,400..700&family=Poppins:ital,wght@0,100;0,200;0,300;0,400;0,500;0,600;0,700;0,800;0,900;1,100;1,200;1,300;1,400;1,500;1,600;1,700;1,800;1,900&display=swap');
+
 /* Base styles */
 :root {
   /* Spacing */
@@ -143,7 +145,7 @@ body {
 }
 
 .window-controls button#close:hover svg {
-  fill: var(--text-primary); /* Keep the close icon white on hover */
+  fill: red; /* Keep the close icon white on hover */
 }
 
 .custom-titlebar {
@@ -262,8 +264,9 @@ header {
 
 .header-left h1 {
   font-size: var(--font-size-lg);
-  font-weight: 500;
-  margin: 0; /* Remove default margin */
+  margin: 0;
+  font-family: 'Poppins', sans-serif;
+  font-weight: 700;
 }
 
 .header-actions {
@@ -295,6 +298,34 @@ header {
   width: 24px;
   height: 24px;
   transition: transform 0.3s ease;
+}
+
+#login-button {
+  align-items: center;
+  justify-content: center;
+  padding: var(--spacing-md) var(--spacing-md); /* Reduced padding */
+  font-size: var(--font-size-sm); /* Smaller font size */
+  font-weight: 500;
+  border-radius: var(--border-radius);
+  background-color: var(--primary-color);
+  color: #fff;
+  border: none;
+  cursor: pointer;
+  transition:
+    background-color 0.2s ease,
+    transform 0.2s ease;
+  height: 32px; /* Fixed height to match theme toggler */
+  margin-left: var(--spacing-sm); /* Spacing from theme toggler */
+}
+
+#login-button:hover {
+  background-color: var(--hover-color);
+  transform: translateY(-1px);
+}
+
+#login-button .material-icons {
+  margin-right: var(--spacing-xs);
+  font-size: 18px; /* Adjusted icon size */
 }
 
 /* App container (main area) */
@@ -576,35 +607,711 @@ h3 {
 .courses-container {
   display: grid;
   grid-template-columns: repeat(auto-fill, minmax(300px, 1fr));
-  gap: var(--spacing-sm);
+  gap: var(--spacing-md);
+  margin-bottom: var(--spacing-lg);
+}
+
+.select-all-container {
+  grid-column: 1 / -1;
+  padding: var(--spacing-sm);
+  background-color: var(--elevated-background);
+  border-radius: var(--border-radius);
+  margin-bottom: var(--spacing-xs);
+}
+
+.select-all-label {
+  display: flex;
+  align-items: center;
+  font-weight: 500;
+  cursor: pointer;
 }
 
 .course-card {
+  position: relative;
   padding: var(--spacing-md);
   border-radius: var(--border-radius);
+  background-color: var(--card-background);
   box-shadow: 0 2px 8px var(--shadow-color);
-  transition: transform 0.2s;
+  transition:
+    transform 0.2s,
+    box-shadow 0.2s;
   cursor: pointer;
 }
 
 .course-card:hover {
   transform: translateY(-2px);
+  box-shadow: 0 4px 12px var(--shadow-color-hover);
+}
+
+.course-header {
+  display: flex;
+  align-items: flex-start;
+  margin-bottom: var(--spacing-xs);
+}
+
+.course-select {
+  display: flex;
+  align-items: center;
+  margin-right: var(--spacing-sm);
+  position: relative;
+  cursor: pointer;
+  user-select: none;
+  min-width: 24px;
+  min-height: 24px;
+}
+
+/* Style the checkbox input */
+.course-checkbox {
+  position: absolute;
+  opacity: 0;
+  cursor: pointer;
+  height: 24px;
+  width: 24px;
+  z-index: 2;
+}
+
+/* Create a custom checkbox */
+.checkmark {
+  position: absolute;
+  top: 0;
+  left: 0;
+  height: 24px;
+  width: 24px;
+  background-color: var(--elevated-background);
+  border-radius: 4px;
+  transition: all 0.2s;
+  cursor: pointer;
+  border: 1px solid var(--text-secondary);
+}
+
+/* When checked, style the checkmark and background */
+.course-checkbox:checked ~ .checkmark {
+  background-color: var(--primary-color);
+  border-color: var(--primary-color);
+}
+
+/* Create the checkmark/indicator (hidden when not checked) */
+.checkmark:after {
+  content: '';
+  position: absolute;
+  display: none;
+  left: 9px;
+  top: 5px;
+  width: 5px;
+  height: 10px;
+  border: solid white;
+  border-width: 0 2px 2px 0;
+  transform: rotate(45deg);
+}
+
+/* Show the checkmark when checked */
+.course-checkbox:checked ~ .checkmark:after {
+  display: block;
+}
+
+/* Add focus styling for accessibility */
+.course-checkbox:focus ~ .checkmark {
+  box-shadow: 0 0 0 2px var(--primary-color);
+}
+
+/* Add hover effect to make it more interactive */
+.course-select:hover .checkmark {
+  background-color: var(--hover-color);
+}
+
+/* Make sure the card click doesn't interfere with checkbox clicks */
+.course-card {
+  position: relative;
+}
+
+/* Style the Select All container to be more clickable */
+.select-all-container {
+  grid-column: 1 / -1;
+  padding: var(--spacing-md);
+  background-color: var(--elevated-background);
+  border-radius: var(--border-radius);
+  margin-bottom: var(--spacing-md);
+}
+
+.select-all-label {
+  display: flex;
+  align-items: center;
+  font-weight: 500;
+  cursor: pointer;
+  position: relative;
+  user-select: none;
+  padding-left: 30px; /* Make room for checkbox */
+}
+
+.select-all-label .checkmark {
+  left: 0;
+  top: 50%;
+  transform: translateY(-50%);
+}
+
+/* Adjust spacing so things don't look too tight */
+.course-header {
+  display: flex;
+  align-items: center;
+  margin-bottom: var(--spacing-sm);
+  position: relative;
+  padding-left: 30px; /* Make room for checkbox */
+}
+
+.course-select {
+  position: absolute;
+  left: 0;
+  top: 50%;
+  transform: translateY(-50%);
 }
 
 .course-name {
   font-size: var(--font-size-lg);
   font-weight: 500;
-  margin-bottom: var(--spacing-xs);
+  margin-top: 0;
+  flex: 1;
+}
+
+.dark-theme .checkmark {
+  border: 1px solid var(--text-secondary);
+}
+
+.light-theme .checkmark {
+  border: 1px solid var(--text-secondary);
+}
+
+.course-checkbox:checked ~ .checkmark {
+  background-color: var(--primary-color);
+  border-color: var(--primary-color);
+}
+
+.checkmark:after {
+  content: '';
+  position: absolute;
+  display: none;
+  left: 7px;
+  top: 3px;
+  width: 5px;
+  height: 10px;
+  border: solid white;
+  border-width: 0 2px 2px 0;
+  transform: rotate(45deg);
+}
+
+.course-checkbox:checked ~ .checkmark:after {
+  display: block;
+}
+
+.course-name {
+  font-size: var(--font-size-lg);
+  font-weight: 500;
+  margin-top: 0;
+  flex: 1;
 }
 
 .course-section {
   font-size: var(--font-size-sm);
   color: var(--text-secondary);
+  margin-bottom: var(--spacing-sm);
 }
 
 .course-description {
-  margin-top: var(--spacing-sm);
   font-size: var(--font-size-sm);
+  margin-bottom: var(--spacing-md);
+  color: var(--text-secondary);
+  display: -webkit-box;
+  -webkit-line-clamp: 3;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.view-details-btn {
+  display: flex;
+  align-items: center;
+  padding: var(--spacing-xs) var(--spacing-sm);
+  background: none;
+  border: 1px solid var(--primary-color);
+  color: var(--primary-color);
+  border-radius: var(--border-radius);
+  font-size: var(--font-size-sm);
+  cursor: pointer;
+  transition: all 0.2s;
+}
+
+.view-details-btn:hover {
+  background-color: var(--primary-color);
+  color: white;
+}
+
+.view-details-btn .material-icons {
+  font-size: 16px;
+  margin-right: var(--spacing-xs);
+}
+
+.generate-button-container {
+  position: sticky;
+  bottom: 0;
+  left: 0;
+  width: 100%;
+  background-color: var(--card-background);
+  box-shadow: 0 -2px 10px var(--shadow-color);
+  padding: var(--spacing-sm) var(--spacing-md);
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  z-index: 10;
+  border-top: 1px solid var(--divider-color);
+}
+
+.selected-count {
+  font-weight: 500;
+  color: var(--text-secondary);
+}
+
+#generate-curriculum-btn {
+  display: flex;
+  align-items: center;
+  padding: var(--spacing-sm) var(--spacing-md);
+  background-color: var(--primary-color);
+  color: white;
+  border: none;
+  border-radius: var(--border-radius);
+  font-weight: 500;
+  cursor: pointer;
+  transition: all 0.2s;
+}
+
+#generate-curriculum-btn:hover {
+  background-color: var(--primary-dark);
+}
+
+#generate-curriculum-btn:disabled {
+  background-color: var(--text-disabled);
+  cursor: not-allowed;
+}
+
+#generate-curriculum-btn .material-icons {
+  margin-right: var(--spacing-xs);
+}
+
+/* Generated Curriculum Styles */
+.generated-curriculum-container {
+  margin-top: var(--spacing-md);
+}
+
+.curriculum-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: var(--spacing-md);
+}
+
+.curriculum-header h3 {
+  margin: 0;
+  font-size: 1.5rem;
+  font-weight: 600;
+}
+
+.secondary-button {
+  display: flex;
+  align-items: center;
+  padding: var(--spacing-xs) var(--spacing-sm);
+  background: none;
+  border: 1px solid var(--text-secondary);
+  color: var(--text-secondary);
+  border-radius: var(--border-radius);
+  cursor: pointer;
+  transition: all 0.2s;
+}
+
+.secondary-button:hover {
+  background-color: var(--elevated-background);
+  border-color: var(--text-primary);
+  color: var(--text-primary);
+}
+
+.secondary-button .material-icons {
+  font-size: 18px;
+  margin-right: var(--spacing-xs);
+}
+
+.curriculum-summary {
+  display: flex;
+  gap: var(--spacing-md);
+  margin-bottom: var(--spacing-lg);
+}
+
+.summary-card {
+  flex: 1;
+  background-color: var(--card-background);
+  border-radius: var(--border-radius);
+  padding: var(--spacing-md);
+  text-align: center;
+  box-shadow: 0 2px 8px var(--shadow-color);
+  transition: transform 0.2s;
+}
+
+.summary-card:hover {
+  transform: translateY(-2px);
+}
+
+.summary-icon {
+  margin-bottom: var(--spacing-xs);
+  color: var(--primary-color);
+}
+
+.summary-icon .material-icons {
+  font-size: 2rem;
+}
+
+.summary-count {
+  font-size: 2rem;
+  font-weight: 700;
+  margin-bottom: var(--spacing-xs);
+}
+
+.summary-label {
+  color: var(--text-secondary);
+  font-size: var(--font-size-sm);
+}
+
+.curriculum-timeline,
+.curriculum-courses {
+  background-color: var(--card-background);
+  border-radius: var(--border-radius);
+  padding: var(--spacing-md);
+  margin-bottom: var(--spacing-lg);
+  box-shadow: 0 2px 8px var(--shadow-color);
+}
+
+.curriculum-timeline h4,
+.curriculum-courses h4 {
+  margin-top: 0;
+  margin-bottom: var(--spacing-md);
+  font-weight: 600;
+  color: var(--text-primary);
+  border-bottom: 1px solid var(--divider-color);
+  padding-bottom: var(--spacing-xs);
+}
+
+.timeline {
+  display: flex;
+  flex-direction: column;
+  gap: var(--spacing-md);
+}
+
+.timeline-week {
+  border: 1px solid var(--divider-color);
+  border-radius: var(--border-radius);
+  overflow: hidden;
+}
+
+.timeline-week-header {
+  background-color: var(--elevated-background);
+  padding: var(--spacing-sm);
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  border-bottom: 1px solid var(--divider-color);
+}
+
+.week-number {
+  font-weight: 600;
+}
+
+.week-dates {
+  color: var(--text-secondary);
+  font-size: var(--font-size-sm);
+}
+
+.timeline-assignments {
+  padding: var(--spacing-sm);
+}
+
+.timeline-assignment {
+  display: flex;
+  padding: var(--spacing-sm);
+  border-bottom: 1px solid var(--divider-color);
+}
+
+.timeline-assignment:last-child {
+  border-bottom: none;
+}
+
+.assignment-icon {
+  margin-right: var(--spacing-sm);
+  color: var(--primary-color);
+}
+
+.assignment-details {
+  flex: 1;
+}
+
+.assignment-title {
+  font-weight: 500;
+  margin-bottom: var(--spacing-xs);
+}
+
+.assignment-course {
+  font-size: var(--font-size-sm);
+  color: var(--text-secondary);
+  margin-bottom: var(--spacing-xs);
+}
+
+.assignment-due {
+  font-size: var(--font-size-sm);
+  color: var(--text-secondary);
+}
+
+.empty-week {
+  padding: var(--spacing-sm);
+  color: var(--text-disabled);
+  text-align: center;
+  font-style: italic;
+}
+
+.curriculum-course-card {
+  margin-bottom: var(--spacing-md);
+  border: 1px solid var(--divider-color);
+  border-radius: var(--border-radius);
+  overflow: hidden;
+}
+
+.curriculum-course-card h5 {
+  margin: 0;
+  padding: var(--spacing-sm);
+  background-color: var(--elevated-background);
+  font-weight: 600;
+  border-bottom: 1px solid var(--divider-color);
+}
+
+.course-materials {
+  padding: var(--spacing-sm);
+}
+
+.materials-list {
+  list-style: none;
+  padding: 0;
+  margin: 0;
+}
+
+/* View Courses Modal */
+
+.modal {
+  position: fixed;
+  top: 0;
+  left: 0;
+  width: 100%;
+  height: 100%;
+  background-color: rgba(0, 0, 0, 0.5);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 1000;
+  opacity: 0;
+  visibility: hidden;
+  transition:
+    opacity 0.3s ease,
+    visibility 0.3s ease;
+}
+
+.modal.active {
+  opacity: 1;
+  visibility: visible;
+}
+
+.modal-content {
+  background-color: var(--card-background);
+  border-radius: var(--border-radius);
+  width: 90%;
+  max-width: 800px;
+  max-height: 90vh;
+  overflow-y: auto;
+  box-shadow: 0 4px 20px rgba(0, 0, 0, 0.3);
+  transform: translateY(20px);
+  transition: transform 0.3s ease;
+}
+
+.modal.active .modal-content {
+  transform: translateY(0);
+}
+
+.modal-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: var(--spacing-md);
+  border-bottom: 1px solid var(--divider-color);
+}
+
+.modal-header h2 {
+  margin: 0;
+  font-size: 1.5rem;
+  font-weight: 600;
+}
+
+.close-button {
+  background: none;
+  border: none;
+  font-size: 1.5rem;
+  cursor: pointer;
+  color: var(--text-secondary);
+  width: 30px;
+  height: 30px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 50%;
+  transition: background-color 0.2s;
+}
+
+.close-button:hover {
+  background-color: var(--hover-color);
+  color: var(--text-primary);
+}
+
+.modal-body {
+  padding: var(--spacing-md);
+}
+
+.coursework-list {
+  margin-top: var(--spacing-md);
+}
+
+.coursework-item {
+  padding: var(--spacing-md);
+  border-bottom: 1px solid var(--divider-color);
+  transition: background-color 0.2s;
+}
+
+.coursework-item:last-child {
+  border-bottom: none;
+}
+
+.coursework-item:hover {
+  background-color: var(--elevated-background);
+}
+
+.coursework-title {
+  font-weight: 600;
+  margin-bottom: var(--spacing-xs);
+  color: var(--text-primary);
+}
+
+.coursework-description {
+  color: var(--text-secondary);
+  font-size: var(--font-size-sm);
+  margin-bottom: var(--spacing-xs);
+}
+
+.coursework-type {
+  display: inline-block;
+  padding: 2px 8px;
+  background-color: var(--elevated-background);
+  border-radius: 12px;
+  font-size: 0.8rem;
+  margin-right: var(--spacing-xs);
+  color: var(--text-secondary);
+}
+
+.coursework-due {
+  font-size: var(--font-size-sm);
+  color: var(--text-secondary);
+  margin-top: var(--spacing-xs);
+}
+
+/* Animation for modal */
+@keyframes fadeIn {
+  from {
+    opacity: 0;
+  }
+  to {
+    opacity: 1;
+  }
+}
+
+@keyframes slideUp {
+  from {
+    transform: translateY(20px);
+  }
+  to {
+    transform: translateY(0);
+  }
+}
+
+/* Responsive adjustments */
+@media (max-width: 768px) {
+  .modal-content {
+    width: 95%;
+    max-height: 95vh;
+  }
+}
+
+/* Curriculum section - Not logged in state */
+#curriculum-not-logged-in {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  padding: var(--spacing-lg);
+  text-align: center;
+  background-color: var(--card-background);
+  border-radius: var(--border-radius);
+  box-shadow: 0 4px 12px var(--shadow-color);
+  margin: var(--spacing-lg) auto;
+  max-width: 600px;
+  width: 90%;
+}
+
+#curriculum-not-logged-in p {
+  font-size: var(--font-size-md);
+  color: var(--text-secondary);
+  margin-bottom: var(--spacing-md);
+  line-height: 1.6;
+}
+
+#curriculum-not-logged-in .primary-button {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  padding: var(--spacing-sm) var(--spacing-lg);
+  font-size: var(--font-size-md);
+  font-weight: 500;
+  border-radius: var(--border-radius);
+  background-color: var(--primary-color);
+  color: #fff;
+  text-decoration: none;
+  transition:
+    background-color 0.2s ease,
+    transform 0.2s ease;
+  margin-top: var(--spacing-md);
+}
+
+#curriculum-not-logged-in .primary-button:hover {
+  background-color: var(--hover-color);
+  transform: translateY(-2px);
+}
+
+#curriculum-not-logged-in .primary-button .material-icons {
+  margin-right: var(--spacing-xs);
+  font-size: 1.2em;
+}
+
+/* Responsive adjustments */
+@media (max-width: 768px) {
+  #curriculum-not-logged-in {
+    padding: var(--spacing-md);
+  }
+
+  #curriculum-not-logged-in p {
+    font-size: var(--font-size-sm);
+  }
+
+  #curriculum-not-logged-in .primary-button {
+    padding: var(--spacing-xs) var(--spacing-md);
+    font-size: var(--font-size-sm);
+  }
 }
 
 /* Button styles */
@@ -801,4 +1508,99 @@ footer {
   --scrollbar-track-bg: #f1f1f1;
   --scrollbar-thumb-bg: #888;
   --scrollbar-thumb-hover-bg: #555;
+}
+
+/* Account Modal Styles */
+.account-modal {
+  display: none;
+  position: fixed;
+  top: 0;
+  left: 0;
+  width: 100%;
+  height: 100%;
+  background-color: rgba(0, 0, 0, 0.5);
+  backdrop-filter: blur(5px);
+  justify-content: center;
+  align-items: center;
+  z-index: 1000;
+}
+
+.account-modal-content {
+  background-color: var(--background-color);
+  padding: 24px;
+  border-radius: 12px;
+  width: 320px;
+  text-align: center;
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.2);
+  animation: fadeIn 0.3s ease-in-out;
+}
+
+@keyframes fadeIn {
+  from {
+    opacity: 0;
+    transform: translateY(-20px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+.account-modal-content h2 {
+  margin: 0 0 16px;
+  font-size: 24px;
+  color: var(--text-color);
+}
+
+.account-modal-content p {
+  margin: 0 0 24px;
+  font-size: 14px;
+  color: var(--text-secondary-color);
+}
+
+.account-options {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.primary-button,
+.secondary-button {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  padding: 12px;
+  border: none;
+  border-radius: 8px;
+  cursor: pointer;
+  font-size: 14px;
+  font-weight: 500;
+  transition:
+    background-color 0.2s ease,
+    transform 0.2s ease;
+}
+
+.primary-button {
+  background-color: var(--primary-color);
+  color: white;
+}
+
+.primary-button:hover {
+  background-color: var(--primary-hover-color);
+  transform: translateY(-2px);
+}
+
+.secondary-button {
+  background-color: var(--secondary-color);
+  color: white;
+}
+
+.secondary-button:hover {
+  background-color: var(--secondary-hover-color);
+  transform: translateY(-2px);
+}
+
+.material-icons {
+  font-size: 18px;
 }

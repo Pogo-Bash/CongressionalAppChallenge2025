@@ -75,7 +75,7 @@
             Sign In
           </button>
           <button class="icon-button" id="theme-toggle" title="Toggle theme">
-            <span class="material-icons">dark_mode</span>
+            <span id="theme-icon" class="material-icons">dark_mode</span>
           </button>
         </div>
       </header>
@@ -166,6 +166,7 @@
               <span class="material-icons rotating">sync</span>
               <p>Loading your courses...</p>
             </div>
+
             <div id="curriculum-not-logged-in" class="curriculum-content">
               <p>
                 Sign in with Google to connect to Google Classroom and generate personalized
@@ -179,6 +180,22 @@
             <div id="curriculum-content" class="curriculum-content" style="display: none">
               <div id="courses-container" class="courses-container">
                 <!-- Courses will be added here dynamically -->
+              </div>
+
+              <div
+                id="generate-button-container"
+                class="generate-button-container"
+                style="display: none"
+              >
+                <!-- Generate button will appear here when courses are selected -->
+              </div>
+
+              <div
+                id="generated-curriculum-container"
+                class="generated-curriculum-container"
+                style="display: none"
+              >
+                <!-- Generated curriculum will be displayed here -->
               </div>
             </div>
           </section>
@@ -221,6 +238,24 @@
           <li class="node-version"></li>
         </ul>
       </footer>
+
+      <!-- Account Selection Modal -->
+      <div id="account-modal" class="account-modal">
+        <div class="account-modal-content">
+          <h2>Sign In</h2>
+          <p>Would you like to use the same account or switch to another account?</p>
+          <div class="account-options">
+            <button id="use-same-account" class="primary-button">
+              <span class="material-icons">account_circle</span>
+              Use Same Account
+            </button>
+            <button id="use-another-account" class="secondary-button">
+              <span class="material-icons">switch_account</span>
+              Switch Account
+            </button>
+          </div>
+        </div>
+      </div>
     </div>
     <script type="module" src="./src/renderer.js"></script>
   </body>
