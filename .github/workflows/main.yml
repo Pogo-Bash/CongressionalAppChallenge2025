@@ -30,10 +30,12 @@ jobs:
           echo "VITE_GOOGLE_OAUTH_CLIENT_ID=${{ secrets.GOOGLE_OAUTH_CLIENT_ID }}" >> .env
 
       - name: Verify .env file
-        run: cat .env
+        run: |
+          ls -la
+          cat .env || echo "⚠️ .env file NOT FOUND!"
 
       - name: Persist .env file
         uses: actions/upload-artifact@v4
         with:
           name: env-file
-          path: .env
+          path: ${{ github.workspace }}/.env
