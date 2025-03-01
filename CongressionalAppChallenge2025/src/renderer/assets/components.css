@@ -160,6 +160,35 @@ body {
   }
 }
 
+/* MacOS Window Controls */
+
+.mac-os .window-controls {
+  display: none;
+}
+
+.mac-os .custom-titlebar {
+  justify-content: flex-end; /* Align traffic lights to the right */
+  padding-right: var(--spacing-sm); /* Add padding for spacing */
+}
+
+.mac-os .window-controls-container {
+  position: absolute;
+  right: var(--spacing-sm); /* Position on the right */
+  top: 50%;
+  transform: translateY(-50%);
+  display: flex;
+  gap: var(--spacing-xs); /* Add spacing between buttons */
+}
+
+.mac-os .window-controls-container button {
+  width: 12px;
+  height: 12px;
+  border-radius: 50%;
+  padding: 0;
+  margin-right: var(--spacing-xs); /* Add spacing between buttons */
+}
+
+
 /* App layout structure */
 #app {
   display: flex;

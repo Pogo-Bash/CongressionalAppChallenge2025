@@ -44,7 +44,8 @@ if (process.contextIsolated) {
     contextBridge.exposeInMainWorld('env', {
       firebaseConfig,
       googleClassroomApiKey: secureEnv.GOOGLE_CLASSROOM_API_KEY || '',
-      isConfigComplete: hasRequiredFields
+      isConfigComplete: hasRequiredFields,
+
     })
     
     // Expose IPC channel for general communication

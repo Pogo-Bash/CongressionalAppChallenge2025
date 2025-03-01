@@ -21,19 +21,19 @@ function createWindow() {
     height: 670,
     show: false,
     frame: false, // Disable default title bar
-    titleBarStyle: 'hidden',
+    titleBarStyle: 'hidden', // Use native macOS traffic lights
     autoHideMenuBar: true,
     ...(process.platform === 'linux' ? { icon } : {}),
     webPreferences: {
       preload: join(__dirname, '../preload/index.js'),
       sandbox: false,
       nodeIntegration: false,
-      contextIsolation: true, 
+      contextIsolation: true,
       webSecurity: true,
-      allowRunningInsecureContent: false, 
-      nativeWindowOpen: true
-    }
-  })
+      allowRunningInsecureContent: false,
+      nativeWindowOpen: true,
+    },
+  });
 
   mainWindow.on('ready-to-show', () => {
     mainWindow.show()
