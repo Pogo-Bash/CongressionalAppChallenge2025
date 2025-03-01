@@ -7,10 +7,14 @@ on:
 
 jobs:
   setup-env:
-    runs-on: ubuntu-latest, windows, macos
+    runs-on: ${{ matrix.os }}
+    strategy:
+      matrix:
+        os: [ubuntu-latest, windows-latest, macos-latest]
+
     steps:
-      - name: Curriq
-        uses: actions/Curriz@v1
+      - name: Checkout code
+        uses: actions/checkout@v3
       
       - name: Create .env file
         run: |
@@ -23,6 +27,12 @@ jobs:
           echo "VITE_FIREBASE_STORAGE_BUCKET=${{ secrets.FIREBASE_STORAGE_BUCKET }}" >> .env
           echo "VITE_GOOGLE_CLASSROOM_API_KEY=${{ secrets.GOOGLE_CLASSROOM_API_KEY }}" >> .env
           echo "VITE_GOOGLE_OAUTH_CLIENT_ID=${{ secrets.GOOGLE_OAUTH_CLIENT_ID }}" >> .env
-      
+
       - name: Verify .env file
         run: cat .env
+
+      - name: Persist .env file
+        uses: actions/upload-artifact@v3
+        with:
+          name: env-file
+          path: .env
