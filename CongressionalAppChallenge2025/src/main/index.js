@@ -20,8 +20,8 @@ function createWindow() {
     width: 900,
     height: 670,
     show: false,
-    frame: false, // Disable default title bar
-    titleBarStyle: 'hidden', // Use native macOS traffic lights
+    frame: false,
+    titleBarStyle: 'hidden',
     autoHideMenuBar: true,
     ...(process.platform === 'linux' ? { icon } : {}),
     webPreferences: {
