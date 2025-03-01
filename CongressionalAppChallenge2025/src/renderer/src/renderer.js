@@ -160,17 +160,38 @@ function extractAndStoreToken(result) {
 }
 
 // Authentication functions
-async function signInWithGoogle() {
+async function signInWithGoogle(useSameAccount = true) {
   try {
     console.log('Starting Google sign-in');
     
+    // Configure the provider
+    const provider = new GoogleAuthProvider();
+    
+    // Add Google Classroom scopes
+    provider.addScope('https://www.googleapis.com/auth/classroom.courses.readonly');
+    provider.addScope('https://www.googleapis.com/auth/classroom.coursework.me.readonly');
+    provider.addScope('https://www.googleapis.com/auth/classroom.rosters.readonly');
+    provider.addScope('https://www.googleapis.com/auth/classroom.profile.emails');
+
+    // Set custom parameters
+    if (window.env.firebaseConfig.clientId) {
+      provider.setCustomParameters({
+        client_id: window.env.firebaseConfig.clientId,
+        prompt: useSameAccount ? 'none' : 'select_account', // Force account selection if needed
+      });
+    } else {
+      provider.setCustomParameters({
+        prompt: useSameAccount ? 'none' : 'select_account', // Force account selection if needed
+      });
+    }
+
     // Try popup first (works better in Electron)
     try {
       console.log('Attempting popup sign-in');
-      const result = await signInWithPopup(auth, googleProvider);
+      const result = await signInWithPopup(auth, provider);
       console.log('Popup sign-in successful');
       
-      // Extract and store token (only once)
+      // Extract and store token
       const tokenExtracted = extractAndStoreToken(result);
       console.log('Token extracted:', tokenExtracted);
       
@@ -179,20 +200,83 @@ async function signInWithGoogle() {
       
       return result.user;
     } catch (popupError) {
-      console.warn('Popup sign-in failed:', popupError);
-      
+      console.error('Popup sign-in failed:', {
+        code: popupError.code,
+        message: popupError.message,
+        email: popupError.email,
+        credential: popupError.credential,
+      });
+
       // If popup is blocked or fails, try redirect
-      console.log('Trying sign-in with redirect...');
-      await signInWithRedirect(auth, googleProvider);
-      // This will redirect the page, so code after this won't execute
-      return null;
+      if (
+        popupError.code === 'auth/popup-blocked' ||
+        popupError.code === 'auth/cancelled-popup-request' ||
+        popupError.code === 'auth/popup-closed-by-user'
+      ) {
+        console.log('Popup blocked or failed, trying redirect...');
+        await signInWithRedirect(auth, provider);
+        return null;
+      } else {
+        throw popupError;
+      }
     }
   } catch (error) {
-    console.error('Sign-in failed:', error);
+    console.error('Sign-in failed:', {
+      code: error.code,
+      message: error.message,
+      email: error.email,
+      credential: error.credential,
+    });
     alert(`Sign-in failed: ${error.message}`);
     return null;
   }
 }
+
+function showAccountSelectionModal() {
+  const modal = document.getElementById('account-modal');
+  if (!modal) {
+    console.error('Account selection modal not found in the DOM');
+    return;
+  }
+
+  console.log('Showing account selection modal');
+  modal.style.display = 'flex';
+
+  // Handle "Use Same Account" button
+  const useSameAccountButton = document.getElementById('use-same-account');
+  if (!useSameAccountButton) {
+    console.error('"Use Same Account" button not found');
+  } else {
+    useSameAccountButton.addEventListener('click', async () => {
+      console.log('Use Same Account button clicked');
+      modal.style.display = 'none';
+      await signInWithGoogle(true); // Use same account
+    });
+  }
+
+  // Handle "Use Another Account" button
+  const useAnotherAccountButton = document.getElementById('use-another-account');
+  if (!useAnotherAccountButton) {
+    console.error('"Use Another Account" button not found');
+  } else {
+    useAnotherAccountButton.addEventListener('click', async () => {
+      console.log('Use Another Account button clicked');
+      modal.style.display = 'none';
+      await signInWithGoogle(false); // Force account selection
+    });
+  }
+}
+
+// Modify your login button click handler to show the modal
+document.getElementById('login-button')?.addEventListener('click', () => {
+  console.log('Login button clicked');
+  showAccountSelectionModal();
+});
+
+document.getElementById('curriculum-login-button')?.addEventListener('click', () => {
+  console.log('Curriculum login button clicked');
+  showAccountSelectionModal();
+});
 
 const logOut = async () => {
   try {
