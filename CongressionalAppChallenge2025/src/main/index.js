@@ -131,7 +131,8 @@ process.env.SECURE_ENV = JSON.stringify({
     projectId: process.env.FIREBASE_PROJECT_ID,
     storageBucket: process.env.FIREBASE_STORAGE_BUCKET,
     messagingSenderId: process.env.FIREBASE_MESSAGING_SENDER_ID,
-    appId: process.env.FIREBASE_APP_ID
+    appId: process.env.FIREBASE_APP_ID,
+    clientId: process.env.GOOGLE_OAUTH_CLIENT_ID
   },
-  GOOGLE_CLASSROOM_API_KEY: process.env.GOOGLE_CLASSROOM_API_KEY
+  GOOGLE_CLASSROOM_API_KEY: process.env.GOOGLE_CLASSROOM_API_KEY,
 });

@@ -40,6 +40,13 @@ try {
 
 // Add Google Classroom scopes to the provider
 const googleProvider = new GoogleAuthProvider();
+
+if (window.env.firebaseConfig.clientId) {
+  googleProvider.setCustomParameters({
+    client_id: window.env.firebaseConfig.clientId
+  });
+}
+
 googleProvider.addScope('https://www.googleapis.com/auth/classroom.courses.readonly');
 googleProvider.addScope('https://www.googleapis.com/auth/classroom.coursework.me.readonly');
 googleProvider.addScope('https://www.googleapis.com/auth/classroom.rosters.readonly');
@@ -127,6 +134,7 @@ function extractAndStoreToken(result) {
       return false;
     }
     
+    console.log('Got credential type:', typeof credential);
     const token = credential.accessToken;
     
     if (!token) {
@@ -134,12 +142,15 @@ function extractAndStoreToken(result) {
       return false;
     }
     
+    console.log('Token obtained, length:', token.length);
+    
     // Store the token
     localStorage.setItem('googleClassroomToken', token);
-    console.log('Successfully stored Google Classroom token');
+    console.log('Token stored in localStorage');
     
-    // Also store the token in a variable for immediate use
-    window.googleClassroomToken = token;
+    // Also log if it can be retrieved
+    const storedToken = localStorage.getItem('googleClassroomToken');
+    console.log('Token retrieved from storage, length:', storedToken ? storedToken.length : 0);
     
     return true;
   } catch (error) {

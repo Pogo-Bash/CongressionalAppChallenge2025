@@ -3,7 +3,7 @@ import {
   signInWithGoogle, 
   logOut, 
   handleRedirectResult 
-} from './firebase';
+} from './firebase.js';
 import { onAuthStateChanged } from 'firebase/auth';
 
 class AuthService {

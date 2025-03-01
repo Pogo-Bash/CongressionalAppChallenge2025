@@ -24,9 +24,21 @@ const db = getFirestore(app);
 
 // Add Google Classroom scope to the provider
 const googleProvider = new GoogleAuthProvider();
+
+if (firebaseConfig && firebaseConfig.clientId) {
+  console.log('Client ID available:', firebaseConfig.clientId.substring(0, 8) + '...');
+  googleProvider.setCustomParameters({
+    client_id: firebaseConfig.clientId,
+    prompt: 'consent'
+  });
+} else {
+  console.warn('No client ID found in the Firebase config!');
+}
+
 googleProvider.addScope('https://www.googleapis.com/auth/classroom.courses.readonly');
 googleProvider.addScope('https://www.googleapis.com/auth/classroom.coursework.me.readonly');
 googleProvider.addScope('https://www.googleapis.com/auth/classroom.rosters.readonly');
+googleProvider.addScope('https://www.googleapis.com/auth/classroom.profile.emails');
 
 async function checkAuthStatus() {
     if (!auth) {
