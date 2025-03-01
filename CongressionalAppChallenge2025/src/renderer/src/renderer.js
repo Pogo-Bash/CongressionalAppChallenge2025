@@ -22,7 +22,9 @@ import {
   signInWithRedirect,
   onAuthStateChanged,
   signOut,
-  getRedirectResult
+  getRedirectResult,
+  setPersistence, 
+  browserLocalPersistence
 } from 'firebase/auth'
 import { getFirestore } from 'firebase/firestore'
 
@@ -34,6 +36,12 @@ let db
 try {
   app = initializeApp(firebaseConfig)
   auth = getAuth(app)
+  
+  // Add the persistence code right here:
+  setPersistence(auth, browserLocalPersistence)
+    .then(() => console.log('Firebase persistence set to local'))
+    .catch(error => console.error('Error setting persistence:', error));
+  
   db = getFirestore(app)
   console.log('Firebase initialized successfully')
 } catch (error) {
@@ -165,92 +173,382 @@ function extractAndStoreToken(result) {
 
 async function signInWithGoogle(useSameAccount = true) {
   try {
-    console.log('Starting Google sign-in')
+    console.log('Starting Google sign-in process');
+    
+    // Clear any existing tokens that might be invalid
+    localStorage.removeItem('googleClassroomToken');
+    
+    const provider = new GoogleAuthProvider();
+    
+    // Add scopes
+    provider.addScope('https://www.googleapis.com/auth/classroom.courses.readonly');
+    provider.addScope('https://www.googleapis.com/auth/classroom.coursework.me.readonly');
+    provider.addScope('https://www.googleapis.com/auth/classroom.rosters.readonly');
+    provider.addScope('https://www.googleapis.com/auth/classroom.profile.emails');
+    
+    // Set custom parameters - important for proper auth flow
+    provider.setCustomParameters({
+      prompt: 'consent', // Always ask for consent to refresh token
+      access_type: 'offline' // Get refresh token
+    });
+    
+    // Try popup first
+    try {
+      const result = await signInWithPopup(auth, provider);
+      console.log('Sign-in successful with popup');
+      
+      // Extract token
+      const credential = GoogleAuthProvider.credentialFromResult(result);
+      if (credential && credential.accessToken) {
+        localStorage.setItem('googleClassroomToken', credential.accessToken);
+        console.log('Token saved successfully');
+      }
+      
+      return result.user;
+    } catch (popupError) {
+      console.error('Popup sign-in failed:', popupError);
+      
+      // For certain errors, try redirect method
+      if (popupError.code === 'auth/popup-blocked' || 
+          popupError.code === 'auth/cancelled-popup-request' ||
+          popupError.code === 'auth/popup-closed-by-user') {
+        await signInWithRedirect(auth, provider);
+        return null;
+      } else {
+        throw popupError;
+      }
+    }
+  } catch (error) {
+    console.error('Sign-in error:', error);
+    throw error;
+  }
+}
 
-    const provider = new GoogleAuthProvider()
-    provider.addScope('https://www.googleapis.com/auth/classroom.courses.readonly')
-    provider.addScope('https://www.googleapis.com/auth/classroom.coursework.me.readonly')
-    provider.addScope('https://www.googleapis.com/auth/classroom.rosters.readonly')
-    provider.addScope('https://www.googleapis.com/auth/classroom.profile.emails')
+let isAuthInProgress = false;
 
-    if (window.env.firebaseConfig.clientId) {
+function checkPopupBlocker() {
+  // Special handling for Electron environment
+  if (window.electron) {
+    // In Electron, we assume popups are allowed since we've configured the main process to handle them
+    console.log('Electron environment detected, assuming popups are allowed');
+    return true;
+  }
+  
+  try {
+    // Use a blank feature string for less visibility and use empty URL instead of about:blank
+    const testPopup = window.open('', '_blank', 'width=1,height=1,left=-100,top=-100');
+    
+    if (!testPopup || testPopup.closed || typeof testPopup.closed === 'undefined') {
+      console.warn('Popup blocker detected');
+      return false;
+    }
+    
+    testPopup.close();
+    return true;
+  } catch (e) {
+    console.error('Error checking popup blocker', e);
+    return false;
+  }
+}
+
+async function signInWithSameAccount() {
+  if (isAuthInProgress) {
+    console.log('Authentication already in progress, ignoring request');
+    return null;
+  }
+  
+  isAuthInProgress = true;
+  
+  try {
+    console.log('Starting sign-in with same account');
+    
+    // Don't remove the token for "same account" flow - we want to use existing auth if possible
+    // localStorage.removeItem('googleClassroomToken');
+    
+    const provider = new GoogleAuthProvider();
+    
+    // Add necessary scopes
+    provider.addScope('https://www.googleapis.com/auth/classroom.courses.readonly');
+    provider.addScope('https://www.googleapis.com/auth/classroom.coursework.me.readonly');
+    provider.addScope('https://www.googleapis.com/auth/classroom.rosters.readonly');
+    provider.addScope('https://www.googleapis.com/auth/classroom.profile.emails');
+    
+    // Use auto-select to skip the account chooser
+    // The key is to set 'select_account: false' to prevent account selection screen
+    if (window.env && window.env.firebaseConfig && window.env.firebaseConfig.clientId) {
       provider.setCustomParameters({
         client_id: window.env.firebaseConfig.clientId,
-        prompt: useSameAccount ? 'none' : 'select_account'
-      })
+        prompt: 'none',
+        select_account: false,
+        access_type: 'offline'
+      });
     } else {
       provider.setCustomParameters({
-        prompt: useSameAccount ? 'none' : 'select_account'
-      })
+        prompt: 'none',
+        select_account: false,
+        access_type: 'offline'
+      });
     }
-
+    
     try {
-      console.log('Attempting popup sign-in')
-      const result = await signInWithPopup(auth, provider)
-      console.log('Popup sign-in successful')
-
-      // Extract and store token immediately
-      const tokenExtracted = extractAndStoreToken(result)
-      console.log('Token extracted:', tokenExtracted)
-
-      // Force UI update
-      updateUI(result.user)
-
-      return result.user
+      console.log('Attempting popup sign-in with same account');
+      const result = await signInWithPopup(auth, provider);
+      console.log('Sign-in successful with popup');
+      extractAndStoreToken(result);
+      return result.user;
     } catch (popupError) {
-      console.warn('Popup sign-in failed:', popupError)
-
+      console.error('Popup sign-in failed:', popupError.code, popupError.message);
+      
+      // If we get a user_cancelled error or account selection is needed, we'll try with consent
+      if (popupError.code === 'auth/user-cancelled' || 
+          popupError.code === 'auth/account-exists-with-different-credential') {
+        console.log('Auto-sign-in failed, trying with consent prompt...');
+        
+        // Create a new provider with consent prompt
+        const consentProvider = new GoogleAuthProvider();
+        consentProvider.addScope('https://www.googleapis.com/auth/classroom.courses.readonly');
+        consentProvider.addScope('https://www.googleapis.com/auth/classroom.coursework.me.readonly');
+        consentProvider.addScope('https://www.googleapis.com/auth/classroom.rosters.readonly');
+        consentProvider.addScope('https://www.googleapis.com/auth/classroom.profile.emails');
+        
+        consentProvider.setCustomParameters({
+          client_id: window.env?.firebaseConfig?.clientId,
+          prompt: 'consent',
+          select_account: false,
+          access_type: 'offline'
+        });
+        
+        return await signInWithPopup(auth, consentProvider);
+      }
+      
+      // Handle popup issues
       if (
         popupError.code === 'auth/popup-blocked' ||
         popupError.code === 'auth/cancelled-popup-request' ||
         popupError.code === 'auth/popup-closed-by-user'
       ) {
-        console.log('Popup blocked or failed, trying redirect...')
-        await signInWithRedirect(auth, provider)
-        return null
+        console.log('Popup failed, trying redirect method...');
+        await signInWithRedirect(auth, provider);
+        return null;
       } else {
-        throw popupError
+        throw popupError;
       }
     }
   } catch (error) {
-    console.error('Sign-in failed:', error)
-    alert(`Sign-in failed: ${error.message}`)
-    return null
+    console.error('Error in signInWithSameAccount:', error);
+    throw error;
+  } finally {
+    // Reset the auth flag after a short delay
+    setTimeout(() => {
+      isAuthInProgress = false;
+    }, 1000);
   }
 }
 
+async function signInWithNewAccount() {
+  if (isAuthInProgress) {
+    console.log('Authentication already in progress, ignoring request');
+    return null;
+  }
+  
+  isAuthInProgress = true;
+  
+  try {
+    console.log('Starting sign-in with new account');
+    
+    // Clear existing authentication state
+    localStorage.removeItem('googleClassroomToken');
+    try {
+      await signOut(auth);
+    } catch (signOutError) {
+      console.warn('Error signing out before new account auth:', signOutError);
+      // Continue with sign-in anyway
+    }
+    
+    const provider = new GoogleAuthProvider();
+    
+    // Add necessary scopes
+    provider.addScope('https://www.googleapis.com/auth/classroom.courses.readonly');
+    provider.addScope('https://www.googleapis.com/auth/classroom.coursework.me.readonly');
+    provider.addScope('https://www.googleapis.com/auth/classroom.rosters.readonly');
+    provider.addScope('https://www.googleapis.com/auth/classroom.profile.emails');
+    
+    // Force account selection
+    if (window.env && window.env.firebaseConfig && window.env.firebaseConfig.clientId) {
+      provider.setCustomParameters({
+        client_id: window.env.firebaseConfig.clientId,
+        prompt: 'select_account',
+        select_account: true,
+        access_type: 'offline'
+      });
+    } else {
+      provider.setCustomParameters({
+        prompt: 'select_account',
+        select_account: true,
+        access_type: 'offline'
+      });
+    }
+    
+    try {
+      console.log('Attempting popup sign-in with account selection');
+      const result = await signInWithPopup(auth, provider);
+      console.log('Sign-in successful with popup');
+      extractAndStoreToken(result);
+      return result.user;
+    } catch (popupError) {
+      console.error('Popup sign-in failed:', popupError.code, popupError.message);
+      
+      if (
+        popupError.code === 'auth/popup-blocked' ||
+        popupError.code === 'auth/cancelled-popup-request' ||
+        popupError.code === 'auth/popup-closed-by-user'
+      ) {
+        console.log('Popup failed, trying redirect method...');
+        await signInWithRedirect(auth, provider);
+        return null;
+      } else {
+        throw popupError;
+      }
+    }
+  } catch (error) {
+    console.error('Error in signInWithNewAccount:', error);
+    throw error;
+  } finally {
+    // Reset the auth flag after a short delay
+    setTimeout(() => {
+      isAuthInProgress = false;
+    }, 1000);
+  }
+}
+
+async function signInWithNewAccount() {
+  if (isAuthInProgress) {
+    console.log('Authentication already in progress, ignoring request');
+    return null;
+  }
+  
+  isAuthInProgress = true;
+  
+  try {
+    console.log('Starting sign-in with new account');
+    
+    // Clear existing authentication
+    localStorage.removeItem('googleClassroomToken');
+    try {
+      await signOut(auth);
+    } catch (signOutError) {
+      console.warn('Error signing out before new account auth:', signOutError);
+      // Continue with sign-in anyway
+    }
+    
+    const provider = new GoogleAuthProvider();
+    
+    // Add necessary scopes
+    provider.addScope('https://www.googleapis.com/auth/classroom.courses.readonly');
+    provider.addScope('https://www.googleapis.com/auth/classroom.coursework.me.readonly');
+    provider.addScope('https://www.googleapis.com/auth/classroom.rosters.readonly');
+    provider.addScope('https://www.googleapis.com/auth/classroom.profile.emails');
+    
+    // Set parameters to force account selection
+    provider.setCustomParameters({
+      prompt: 'select_account',  // Force account selection
+      access_type: 'offline'
+    });
+    
+    // Check for popup blockers
+    if (!checkPopupBlocker()) {
+      console.log('Popups are blocked, using redirect auth');
+      await signInWithRedirect(auth, provider);
+      return null;
+    }
+    
+    // Try popup first
+    try {
+      const result = await signInWithPopup(auth, provider);
+      console.log('Sign-in successful with popup');
+      extractAndStoreToken(result);
+      return result.user;
+    } catch (popupError) {
+      console.error('Popup sign-in failed:', popupError);
+      
+      if (
+        popupError.code === 'auth/popup-blocked' ||
+        popupError.code === 'auth/cancelled-popup-request' ||
+        popupError.code === 'auth/popup-closed-by-user'
+      ) {
+        console.log('Popup failed, trying redirect...');
+        await signInWithRedirect(auth, provider);
+        return null;
+      } else {
+        throw popupError;
+      }
+    }
+  } catch (error) {
+    console.error('Error in signInWithNewAccount:', error);
+    throw error;
+  } finally {
+    // Reset the auth flag after a short delay
+    setTimeout(() => {
+      isAuthInProgress = false;
+    }, 1000);
+  }
+}
+
+
 function showAccountSelectionModal() {
-  const modal = document.getElementById('account-modal')
+  const modal = document.getElementById('account-modal');
   if (!modal) {
-    console.error('Account selection modal not found in the DOM')
-    return
+    console.error('Account selection modal not found in the DOM');
+    return;
   }
 
-  console.log('Showing account selection modal')
-  modal.style.display = 'flex'
+  console.log('Showing account selection modal');
+  modal.style.display = 'flex';
 
   // Handle "Use Same Account" button
-  const useSameAccountButton = document.getElementById('use-same-account')
-  if (!useSameAccountButton) {
-    console.error('"Use Same Account" button not found')
-  } else {
-    useSameAccountButton.addEventListener('click', async () => {
-      console.log('Use Same Account button clicked')
-      modal.style.display = 'none'
-      await signInWithGoogle(true) // Use same account
-    })
+  const useSameAccountButton = document.getElementById('use-same-account');
+  if (useSameAccountButton) {
+    // Remove existing event listeners by replacing the button
+    const newSameAccountButton = useSameAccountButton.cloneNode(true);
+    useSameAccountButton.parentNode.replaceChild(newSameAccountButton, useSameAccountButton);
+    
+    newSameAccountButton.addEventListener('click', async () => {
+      console.log('Use Same Account button clicked');
+      modal.style.display = 'none';
+      
+      // Short delay to ensure modal is closed before popup appears
+      setTimeout(async () => {
+        try {
+          await signInWithSameAccount();
+        } catch (error) {
+          console.error('Sign-in with same account failed:', error);
+          alert(`Sign-in failed: ${error.message}`);
+        }
+      }, 100);
+    });
   }
 
   // Handle "Use Another Account" button
-  const useAnotherAccountButton = document.getElementById('use-another-account')
-  if (!useAnotherAccountButton) {
-    console.error('"Use Another Account" button not found')
-  } else {
-    useAnotherAccountButton.addEventListener('click', async () => {
-      console.log('Use Another Account button clicked')
-      modal.style.display = 'none'
-      await signInWithGoogle(false) // Force account selection
-    })
+  const useAnotherAccountButton = document.getElementById('use-another-account');
+  if (useAnotherAccountButton) {
+    // Remove existing event listeners by replacing the button
+    const newOtherAccountButton = useAnotherAccountButton.cloneNode(true);
+    useAnotherAccountButton.parentNode.replaceChild(newOtherAccountButton, useAnotherAccountButton);
+    
+    newOtherAccountButton.addEventListener('click', async () => {
+      console.log('Use Another Account button clicked');
+      modal.style.display = 'none';
+      
+      // Short delay to ensure modal is closed before popup appears
+      setTimeout(async () => {
+        try {
+          await signInWithNewAccount();
+        } catch (error) {
+          console.error('Sign-in with new account failed:', error);
+          alert(`Sign-in failed: ${error.message}`);
+        }
+      }, 100);
+    });
   }
 }
 
@@ -331,10 +629,14 @@ const authService = {
   user: null,
   authListeners: [],
 
-  async login() {
+  async login(useSameAccount = true) {
     try {
-      console.log('Login requested')
-      return await signInWithGoogle()
+      console.log('Login requested, useSameAccount:', useSameAccount)
+      if (useSameAccount) {
+        return await signInWithSameAccount()
+      } else {
+        return await signInWithNewAccount()
+      }
     } catch (error) {
       console.error('Login error:', error)
       throw error
@@ -628,26 +930,16 @@ function initializeAuthUI() {
 
   // Handle login clicks
   if (loginButton) {
-    loginButton.addEventListener('click', async () => {
+    loginButton.addEventListener('click', () => {
       console.log('Login button clicked')
-      try {
-        await authService.login()
-      } catch (error) {
-        console.error('Login failed:', error)
-        alert(`Login failed: ${error.message}`)
-      }
+      showAccountSelectionModal() // Just show the modal, don't call login directly
     })
   }
-
+  
   if (curriculumLoginButton) {
-    curriculumLoginButton.addEventListener('click', async () => {
+    curriculumLoginButton.addEventListener('click', () => {
       console.log('Curriculum login button clicked')
-      try {
-        await authService.login()
-      } catch (error) {
-        console.error('Login failed:', error)
-        alert(`Login failed: ${error.message}`)
-      }
+      showAccountSelectionModal() // Just show the modal, don't call login directly
     })
   }
 

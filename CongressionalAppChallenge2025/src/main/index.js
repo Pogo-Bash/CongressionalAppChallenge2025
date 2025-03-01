@@ -48,6 +48,11 @@ function createWindow() {
   mainWindow.webContents.setWindowOpenHandler(({ url }) => {
     console.log('Window open requested for URL:', url)
 
+    // Allow about:blank for popup blocker detection
+    if (url === 'about:blank') {
+      return { action: 'allow' }
+    }
+
     // Allow Firebase auth handler and Google authentication URLs
     if (
       url.includes('firebaseapp.com/__/auth/handler') ||
@@ -122,6 +127,19 @@ ipcMain.on('window-control', (event, action) => {
     case 'close':
       win.close()
       break
+  }
+})
+
+// For camera permission handling
+ipcMain.handle('request-camera-permission', async () => {
+  try {
+    const win = BrowserWindow.getFocusedWindow()
+    if (!win) return { success: false, error: 'No active window found' }
+    
+    const status = await win.webContents.getMediaSourceId('camera')
+    return { success: true, status }
+  } catch (error) {
+    return { success: false, error: error.message }
   }
 })
 

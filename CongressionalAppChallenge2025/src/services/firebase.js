@@ -3,10 +3,12 @@ import {
   getAuth, 
   GoogleAuthProvider, 
   signInWithRedirect, 
-  signInWithPopup,  // Added this import
-  getRedirectResult, // Added this import
-  onAuthStateChanged, // Added this import
-  signOut 
+  signInWithPopup,
+  getRedirectResult,
+  onAuthStateChanged,
+  signOut,
+  setPersistence,
+  browserLocalPersistence
 } from 'firebase/auth';
 import { getFirestore } from 'firebase/firestore';
 
@@ -20,6 +22,12 @@ if (!firebaseConfig || !firebaseConfig.apiKey) {
 // Initialize Firebase
 const app = initializeApp(firebaseConfig);
 const auth = getAuth(app);
+
+// Set persistence to local
+setPersistence(auth, browserLocalPersistence)
+  .then(() => console.log('Firebase persistence set to local'))
+  .catch(error => console.error('Error setting persistence:', error));
+
 const db = getFirestore(app);
 
 // Add Google Classroom scope to the provider
@@ -29,7 +37,8 @@ if (firebaseConfig && firebaseConfig.clientId) {
   console.log('Client ID available:', firebaseConfig.clientId.substring(0, 8) + '...');
   googleProvider.setCustomParameters({
     client_id: firebaseConfig.clientId,
-    prompt: 'consent'
+    prompt: 'consent',
+    access_type: 'offline' // Request a refresh token
   });
 } else {
   console.warn('No client ID found in the Firebase config!');
@@ -39,6 +48,9 @@ googleProvider.addScope('https://www.googleapis.com/auth/classroom.courses.reado
 googleProvider.addScope('https://www.googleapis.com/auth/classroom.coursework.me.readonly');
 googleProvider.addScope('https://www.googleapis.com/auth/classroom.rosters.readonly');
 googleProvider.addScope('https://www.googleapis.com/auth/classroom.profile.emails');
+
+// Track authentication in progress to prevent multiple popups
+let isAuthInProgress = false;
 
 async function checkAuthStatus() {
     if (!auth) {
@@ -92,76 +104,189 @@ function extractAndStoreToken(result) {
   }
 }
 
-// Authentication functions
-export const signInWithGoogle = async (useSameAccount = true) => {
+// Function to check if popups are allowed
+function checkPopupBlocker() {
   try {
-    console.log('Starting Google sign-in with popup...');
+    const testPopup = window.open('about:blank', '_blank', 'width=1,height=1');
+    
+    if (!testPopup || testPopup.closed || typeof testPopup.closed === 'undefined') {
+      console.warn('Popup blocker detected');
+      return false;
+    }
+    
+    testPopup.close();
+    return true;
+  } catch (e) {
+    console.error('Error checking popup blocker', e);
+    return false;
+  }
+}
 
-    // Configure the provider based on whether we want to use the same account
+// Authentication functions
+export const signInWithSameAccount = async () => {
+  if (isAuthInProgress) {
+    console.log('Authentication already in progress, ignoring request');
+    return null;
+  }
+  
+  isAuthInProgress = true;
+  
+  try {
+    console.log('Starting sign-in with same account');
+    
+    // Clear any existing token to ensure fresh authentication
+    localStorage.removeItem('googleClassroomToken');
+    
     const provider = new GoogleAuthProvider();
-
-    // Add Google Classroom scopes
+    
+    // Add necessary scopes
     provider.addScope('https://www.googleapis.com/auth/classroom.courses.readonly');
     provider.addScope('https://www.googleapis.com/auth/classroom.coursework.me.readonly');
     provider.addScope('https://www.googleapis.com/auth/classroom.rosters.readonly');
     provider.addScope('https://www.googleapis.com/auth/classroom.profile.emails');
-
-    // Set custom parameters
+    
+    // Set parameters for same account
     if (firebaseConfig && firebaseConfig.clientId) {
       provider.setCustomParameters({
         client_id: firebaseConfig.clientId,
-        prompt: useSameAccount ? 'none' : 'select_account', // Force account selection if needed
+        prompt: 'none',  // Try to use existing session
+        access_type: 'offline'
       });
     } else {
       provider.setCustomParameters({
-        prompt: useSameAccount ? 'none' : 'select_account', // Force account selection if needed
+        prompt: 'none',
+        access_type: 'offline'
       });
     }
-
-    // First try with popup (often works better in Electron)
+    
+    // Check for popup blockers
+    if (!checkPopupBlocker()) {
+      console.log('Popups are blocked, using redirect auth');
+      await signInWithRedirect(auth, provider);
+      return null;
+    }
+    
+    // Try popup first
     try {
-      console.log('Attempting popup sign-in...');
       const result = await signInWithPopup(auth, provider);
-      console.log('Sign-in successful with popup:', result.user);
-
-      // Extract and store token
-      const tokenSaved = extractAndStoreToken(result);
-      console.log('Token saved successfully:', tokenSaved);
-
+      console.log('Sign-in successful with popup');
+      extractAndStoreToken(result);
       return result.user;
     } catch (popupError) {
-      console.error('Popup sign-in failed:', {
-        code: popupError.code,
-        message: popupError.message,
-        email: popupError.email,
-        credential: popupError.credential,
-      });
-
-      // If popup is blocked or fails, try redirect
+      console.error('Popup sign-in failed:', popupError);
+      
       if (
         popupError.code === 'auth/popup-blocked' ||
         popupError.code === 'auth/cancelled-popup-request' ||
         popupError.code === 'auth/popup-closed-by-user'
       ) {
-        console.log('Popup blocked or failed, trying redirect...');
+        console.log('Popup failed, trying redirect...');
         await signInWithRedirect(auth, provider);
-        // Code after this won't execute immediately due to redirect
         return null;
       } else {
         throw popupError;
       }
     }
   } catch (error) {
-    console.error('Error signing in with Google:', {
-      code: error.code,
-      message: error.message,
-      email: error.email,
-      credential: error.credential,
-    });
+    console.error('Error in signInWithSameAccount:', error);
     throw error;
+  } finally {
+    // Reset the auth flag after a short delay
+    setTimeout(() => {
+      isAuthInProgress = false;
+    }, 1000);
   }
 };
 
+export const signInWithNewAccount = async () => {
+  if (isAuthInProgress) {
+    console.log('Authentication already in progress, ignoring request');
+    return null;
+  }
+  
+  isAuthInProgress = true;
+  
+  try {
+    console.log('Starting sign-in with new account');
+    
+    // Clear existing authentication
+    localStorage.removeItem('googleClassroomToken');
+    try {
+      await signOut(auth);
+    } catch (signOutError) {
+      console.warn('Error signing out before new account auth:', signOutError);
+      // Continue with sign-in anyway
+    }
+    
+    const provider = new GoogleAuthProvider();
+    
+    // Add necessary scopes
+    provider.addScope('https://www.googleapis.com/auth/classroom.courses.readonly');
+    provider.addScope('https://www.googleapis.com/auth/classroom.coursework.me.readonly');
+    provider.addScope('https://www.googleapis.com/auth/classroom.rosters.readonly');
+    provider.addScope('https://www.googleapis.com/auth/classroom.profile.emails');
+    
+    // Set parameters to force account selection
+    if (firebaseConfig && firebaseConfig.clientId) {
+      provider.setCustomParameters({
+        client_id: firebaseConfig.clientId,
+        prompt: 'select_account',  // Force account selection
+        access_type: 'offline'
+      });
+    } else {
+      provider.setCustomParameters({
+        prompt: 'select_account',
+        access_type: 'offline'
+      });
+    }
+    
+    // Check for popup blockers
+    if (!checkPopupBlocker()) {
+      console.log('Popups are blocked, using redirect auth');
+      await signInWithRedirect(auth, provider);
+      return null;
+    }
+    
+    // Try popup first
+    try {
+      const result = await signInWithPopup(auth, provider);
+      console.log('Sign-in successful with popup');
+      extractAndStoreToken(result);
+      return result.user;
+    } catch (popupError) {
+      console.error('Popup sign-in failed:', popupError);
+      
+      if (
+        popupError.code === 'auth/popup-blocked' ||
+        popupError.code === 'auth/cancelled-popup-request' ||
+        popupError.code === 'auth/popup-closed-by-user'
+      ) {
+        console.log('Popup failed, trying redirect...');
+        await signInWithRedirect(auth, provider);
+        return null;
+      } else {
+        throw popupError;
+      }
+    }
+  } catch (error) {
+    console.error('Error in signInWithNewAccount:', error);
+    throw error;
+  } finally {
+    // Reset the auth flag after a short delay
+    setTimeout(() => {
+      isAuthInProgress = false;
+    }, 1000);
+  }
+};
+
+// Legacy function for backward compatibility
+export const signInWithGoogle = async (useSameAccount = true) => {
+  if (useSameAccount) {
+    return signInWithSameAccount();
+  } else {
+    return signInWithNewAccount();
+  }
+};
 
 export const logOut = async () => {
   try {
@@ -175,28 +300,28 @@ export const logOut = async () => {
 };
 
 export const handleRedirectResult = async () => {
-    try {
-      console.log('Checking for redirect result');
-      const result = await getRedirectResult(auth);
+  try {
+    console.log('Checking for redirect result');
+    const result = await getRedirectResult(auth);
+    
+    if (result) {
+      // User successfully signed in
+      console.log('User signed in via redirect:', result.user);
       
-      if (result) {
-        // User successfully signed in
-        console.log('User signed in via redirect:', result.user);
-        
-        // Extract and store token
-        const tokenSaved = extractAndStoreToken(result);
-        console.log('Token saved from redirect:', tokenSaved);
-        
-        return result.user;
-      } else {
-        console.log('No redirect result found');
-      }
+      // Extract and store token
+      const tokenSaved = extractAndStoreToken(result);
+      console.log('Token saved from redirect:', tokenSaved);
       
-      return null;
-    } catch (error) {
-      console.error('Error handling redirect result:', error);
-      return null;
+      return result.user;
+    } else {
+      console.log('No redirect result found');
     }
+    
+    return null;
+  } catch (error) {
+    console.error('Error handling redirect result:', error);
+    return null;
+  }
 };
 
 export { auth, db };
