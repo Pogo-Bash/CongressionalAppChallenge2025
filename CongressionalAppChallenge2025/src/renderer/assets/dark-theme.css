@@ -36,15 +36,6 @@
   color: var(--text-secondary);
 }
 
-.dark-theme .window-controls button:hover {
-  background-color: rgba(255, 255, 255, 0.1);
-}
-
-.dark-theme #close:hover {
-  background-color: #e81123;
-  color: white;
-}
-
 /* Apply dark theme colors to components */
 body.dark-theme {
   background-color: var(--background-color);

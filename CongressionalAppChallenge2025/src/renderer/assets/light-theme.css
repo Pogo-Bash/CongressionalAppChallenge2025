@@ -36,15 +36,6 @@
     color: var(--text-secondary);
   }
   
-  .light-theme .window-controls button:hover {
-    background-color: rgba(0, 0, 0, 0.05);
-  }
-  
-  .light-theme #close:hover {
-    background-color: #e81123;
-    color: white;
-  }
-  
   /* Apply light theme colors to components */
   body.light-theme {
     background-color: var(--background-color);
