@@ -3,78 +3,71 @@ const BRIGHTNESS7_ICON = `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 5
 const BRIGHTNESS2_ICON = `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 384 512"><!--!Font Awesome Free 6.7.2 by @fontawesome - https://fontawesome.com License - https://fontawesome.com/license/free Copyright 2025 Fonticons, Inc.--><path d="M223.5 32C100 32 0 132.3 0 256S100 480 223.5 480c60.6 0 115.5-24.2 155.8-63.4c5-4.9 6.3-12.5 3.1-18.7s-10.1-9.7-17-8.5c-9.8 1.7-19.8 2.6-30.1 2.6c-96.9 0-175.5-78.8-175.5-176c0-65.8 36-123.1 89.3-153.3c6.1-3.5 9.2-10.5 7.7-17.3s-7.3-11.9-14.3-12.5c-6.3-.5-12.6-.8-19-.8z"/></svg>`;
 
 export const themeManager = {
-    currentTheme: 'dark',
-    
-    initialize() {
-      // Check if theme is saved in localStorage
-      const savedTheme = localStorage.getItem('theme');
-      if (savedTheme) {
-        this.setTheme(savedTheme);
+  currentTheme: 'dark',
+  
+  initialize() {
+    const savedTheme = localStorage.getItem('theme');
+    if (savedTheme) {
+      this.setTheme(savedTheme);
+    } else {
+      if (window.matchMedia && window.matchMedia('(prefers-color-scheme: dark)').matches) {
+        this.setTheme('dark');
       } else {
-        // Check system preference
-        if (window.matchMedia && window.matchMedia('(prefers-color-scheme: dark)').matches) {
-          this.setTheme('dark');
-        } else {
-          this.setTheme('light');
-        }
+        this.setTheme('light');
       }
-      
-      // Listen for system theme changes if set to 'system'
-      if (this.currentTheme === 'system') {
-        window.matchMedia('(prefers-color-scheme: dark)').addEventListener('change', e => {
-          this.applyTheme(e.matches ? 'dark' : 'light');
-        });
-      }
-      
-      // Update UI to reflect current theme
-      this.updateUI();
-    },
+    }
     
-    setTheme(theme) {
-      this.currentTheme = theme;
-      localStorage.setItem('theme', theme);
-      
-      if (theme === 'system') {
-        const isDarkMode = window.matchMedia && window.matchMedia('(prefers-color-scheme: dark)').matches;
-        this.applyTheme(isDarkMode ? 'dark' : 'light');
-      } else {
-        this.applyTheme(theme);
-      }
-      
-      this.updateUI();
-    },
-    
-    toggleTheme() {
-      const newTheme = document.body.classList.contains('dark-theme') ? 'light' : 'dark';
-      this.setTheme(newTheme);
-    },
-    
-    applyTheme(theme) {
-      const themeIconElement = document.getElementById('theme-icon');
-      
-      if (theme === 'dark') {
-        document.body.classList.add('dark-theme');
-        document.body.classList.remove('light-theme');
-        document.documentElement.classList.add('dark-theme');
-        document.documentElement.classList.remove('light-theme');
-        
-        // Using SVG icon for sun (shows what happens when clicked)
-        if (themeIconElement) themeIconElement.innerHTML = BRIGHTNESS7_ICON;
-      } else {
-        document.body.classList.add('light-theme');
-        document.body.classList.remove('dark-theme');
-        document.documentElement.classList.add('light-theme');
-        document.documentElement.classList.remove('dark-theme');
-        
-        // Using SVG icon for moon
-        if (themeIconElement) themeIconElement.innerHTML = BRIGHTNESS2_ICON;
-      }
-    },
-    
-    updateUI() {
-      // Update theme option buttons
-      document.querySelectorAll('.theme-option').forEach(option => {
-        option.classList.toggle('active', option.dataset.theme === this.currentTheme);
+    if (this.currentTheme === 'system') {
+      window.matchMedia('(prefers-color-scheme: dark)').addEventListener('change', e => {
+        this.applyTheme(e.matches ? 'dark' : 'light');
       });
     }
-  };
+    
+    this.updateUI();
+  },
+  
+  setTheme(theme) {
+    this.currentTheme = theme;
+    localStorage.setItem('theme', theme);
+    
+    if (theme === 'system') {
+      const isDarkMode = window.matchMedia && window.matchMedia('(prefers-color-scheme: dark)').matches;
+      this.applyTheme(isDarkMode ? 'dark' : 'light');
+    } else {
+      this.applyTheme(theme);
+    }
+    
+    this.updateUI();
+  },
+  
+  toggleTheme() {
+    const newTheme = this.currentTheme === 'dark' ? 'light' : 'dark';
+    this.setTheme(newTheme);
+  },
+  
+  applyTheme(theme) {
+    const themeIconElement = document.getElementById('theme-icon');
+    
+    if (theme === 'dark') {
+      document.body.classList.add('dark-theme');
+      document.body.classList.remove('light-theme');
+      document.documentElement.classList.add('dark-theme');
+      document.documentElement.classList.remove('light-theme');
+      
+      if (themeIconElement) themeIconElement.innerHTML = BRIGHTNESS7_ICON;
+    } else {
+      document.body.classList.add('light-theme');
+      document.body.classList.remove('dark-theme');
+      document.documentElement.classList.add('light-theme');
+      document.documentElement.classList.remove('dark-theme');
+      
+      if (themeIconElement) themeIconElement.innerHTML = BRIGHTNESS2_ICON;
+    }
+  },
+  
+  updateUI() {
+    document.querySelectorAll('.theme-option').forEach(option => {
+      option.classList.toggle('active', option.dataset.theme === this.currentTheme);
+    });
+  }
+};
