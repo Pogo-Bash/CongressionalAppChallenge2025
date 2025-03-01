@@ -46,7 +46,13 @@
 }
 
 body {
-  font-family: 'Roboto', -apple-system, BlinkMacSystemFont, 'Segoe UI', Arial, sans-serif;
+  font-family:
+    'Roboto',
+    -apple-system,
+    BlinkMacSystemFont,
+    'Segoe UI',
+    Arial,
+    sans-serif;
   margin: 0;
   padding: 0;
 }
@@ -84,7 +90,7 @@ body {
   margin-bottom: var(--spacing-lg);
 }
 
-/* Title Bar and Window Controls Styling */ 
+/* Title Bar and Window Controls Styling */
 
 .custom-titlebar {
   display: flex;
@@ -160,35 +166,6 @@ body {
   }
 }
 
-/* MacOS Window Controls */
-
-.mac-os .window-controls {
-  display: none;
-}
-
-.mac-os .custom-titlebar {
-  justify-content: flex-end; /* Align traffic lights to the right */
-  padding-right: var(--spacing-sm); /* Add padding for spacing */
-}
-
-.mac-os .window-controls-container {
-  position: absolute;
-  right: var(--spacing-sm); /* Position on the right */
-  top: 50%;
-  transform: translateY(-50%);
-  display: flex;
-  gap: var(--spacing-xs); /* Add spacing between buttons */
-}
-
-.mac-os .window-controls-container button {
-  width: 12px;
-  height: 12px;
-  border-radius: 50%;
-  padding: 0;
-  margin-right: var(--spacing-xs); /* Add spacing between buttons */
-}
-
-
 /* App layout structure */
 #app {
   display: flex;
@@ -207,7 +184,7 @@ header {
 
 .header-left {
   display: flex;
-  align-items: center; 
+  align-items: center;
   gap: var(--spacing-sm);
 }
 
@@ -378,8 +355,12 @@ h3 {
 }
 
 @keyframes fadeIn {
-  from { opacity: 0; }
-  to { opacity: 1; }
+  from {
+    opacity: 0;
+  }
+  to {
+    opacity: 1;
+  }
 }
 
 /* Dashboard Section */
@@ -413,7 +394,9 @@ h3 {
   padding: var(--spacing-md);
   border-radius: var(--border-radius);
   box-shadow: 0 2px 8px var(--shadow-color);
-  transition: transform 0.2s, box-shadow 0.2s;
+  transition:
+    transform 0.2s,
+    box-shadow 0.2s;
 }
 
 .stat-card:hover {
@@ -578,8 +561,12 @@ h3 {
 }
 
 @keyframes rotating {
-  from { transform: rotate(0deg); }
-  to { transform: rotate(360deg); }
+  from {
+    transform: rotate(0deg);
+  }
+  to {
+    transform: rotate(360deg);
+  }
 }
 
 .rotating {
@@ -693,7 +680,9 @@ h3 {
   border-radius: 50%;
   left: 2px;
   bottom: 2px;
-  transition: transform 0.2s, background-color 0.2s;
+  transition:
+    transform 0.2s,
+    background-color 0.2s;
 }
 
 .toggle input:checked + .toggle-slider:before {

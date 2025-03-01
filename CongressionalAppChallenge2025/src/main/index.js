@@ -12,7 +12,7 @@ const envPath = app.isPackaged
 dotenv.config({ path: envPath })
 
 if (!process.env.FIREBASE_API_KEY) {
-  console.error('Missing required environment variables. Check your .env file.');
+  console.error('Missing required environment variables. Check your .env file.')
 }
 
 function createWindow() {
@@ -31,9 +31,9 @@ function createWindow() {
       contextIsolation: true,
       webSecurity: true,
       allowRunningInsecureContent: false,
-      nativeWindowOpen: true,
-    },
-  });
+      nativeWindowOpen: true
+    }
+  })
 
   mainWindow.on('ready-to-show', () => {
     mainWindow.show()
@@ -42,27 +42,29 @@ function createWindow() {
   mainWindow.webContents.on('did-finish-load', () => {
     mainWindow.webContents.executeJavaScript(
       `document.body.classList.add('platform-${process.platform}');`
-    );
+    )
   })
 
   mainWindow.webContents.setWindowOpenHandler(({ url }) => {
-    console.log('Window open requested for URL:', url);
-    
+    console.log('Window open requested for URL:', url)
+
     // Allow Firebase auth handler and Google authentication URLs
-    if (url.includes('firebaseapp.com/__/auth/handler') ||
-        url.includes('accounts.google.com') ||
-        url.includes('apis.google.com/js/api') ||
-        url.includes('google.com/signin') ||
-        url.includes('googleusercontent.com')) {
-      console.log('Allowing internal window for auth URL:', url);
-      return { action: 'allow' };
+    if (
+      url.includes('firebaseapp.com/__/auth/handler') ||
+      url.includes('accounts.google.com') ||
+      url.includes('apis.google.com/js/api') ||
+      url.includes('google.com/signin') ||
+      url.includes('googleusercontent.com')
+    ) {
+      console.log('Allowing internal window for auth URL:', url)
+      return { action: 'allow' }
     }
-    
+
     // For other URLs, open in external browser
-    console.log('Opening external URL:', url);
-    shell.openExternal(url);
-    return { action: 'deny' };
-  });
+    console.log('Opening external URL:', url)
+    shell.openExternal(url)
+    return { action: 'deny' }
+  })
 
   if (is.dev && process.env['ELECTRON_RENDERER_URL']) {
     mainWindow.loadURL(process.env['ELECTRON_RENDERER_URL'])
@@ -106,23 +108,22 @@ app.on('window-all-closed', () => {
   }
 })
 
-
 ipcMain.on('window-control', (event, action) => {
-  const win = BrowserWindow.getFocusedWindow();
-  if (!win) return;
+  const win = BrowserWindow.getFocusedWindow()
+  if (!win) return
 
   switch (action) {
     case 'minimize':
-      win.minimize();
-      break;
+      win.minimize()
+      break
     case 'maximize':
-      win.isMaximized() ? win.unmaximize() : win.maximize();
-      break;
+      win.isMaximized() ? win.unmaximize() : win.maximize()
+      break
     case 'close':
-      win.close();
-      break;
+      win.close()
+      break
   }
-});
+})
 
 process.env.SECURE_ENV = JSON.stringify({
   FIREBASE_CONFIG: {
@@ -134,5 +135,5 @@ process.env.SECURE_ENV = JSON.stringify({
     appId: process.env.FIREBASE_APP_ID,
     clientId: process.env.GOOGLE_OAUTH_CLIENT_ID
   },
-  GOOGLE_CLASSROOM_API_KEY: process.env.GOOGLE_CLASSROOM_API_KEY,
-});
+  GOOGLE_CLASSROOM_API_KEY: process.env.GOOGLE_CLASSROOM_API_KEY
+})
