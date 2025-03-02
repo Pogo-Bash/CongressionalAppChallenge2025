@@ -1,5 +1,6 @@
 // Import theme manager
 import { themeManager } from './theme-manager.js'
+import * as tf from '@tensorflow/tfjs'
 
 // For communication with Electron main process
 const { ipcRenderer } = window.electron || {}
@@ -61,6 +62,136 @@ googleProvider.addScope('https://www.googleapis.com/auth/classroom.courses.reado
 googleProvider.addScope('https://www.googleapis.com/auth/classroom.coursework.me.readonly')
 googleProvider.addScope('https://www.googleapis.com/auth/classroom.rosters.readonly')
 googleProvider.addScope('https://www.googleapis.com/auth/classroom.profile.emails')
+
+// Focus Sessions Management
+let focusSessionsCache = []
+
+// Load focus sessions from local storage
+function loadFocusSessions() {
+  try {
+    const savedSessions = localStorage.getItem('focusSessions')
+    if (savedSessions) {
+      focusSessionsCache = JSON.parse(savedSessions)
+      console.log(`Loaded ${focusSessionsCache.length} focus sessions from storage`)
+    }
+  } catch (error) {
+    console.error('Error loading focus sessions:', error)
+  }
+  return focusSessionsCache
+}
+
+// Save focus sessions to local storage
+function saveFocusSessions(sessions) {
+  try {
+    localStorage.setItem('focusSessions', JSON.stringify(sessions))
+    focusSessionsCache = sessions
+    console.log(`Saved ${sessions.length} focus sessions to storage`)
+    
+    // Update dashboard with latest data
+    updateDashboardWithFocusData(sessions)
+  } catch (error) {
+    console.error('Error saving focus sessions:', error)
+  }
+}
+
+// Add a new focus session to storage
+function saveNewFocusSession(session) {
+  const sessions = loadFocusSessions()
+  sessions.push({
+    ...session,
+    id: Date.now(), // Use timestamp as unique ID
+    createdAt: new Date().toISOString()
+  })
+  
+  // Keep only the 100 most recent sessions
+  const trimmedSessions = sessions.sort((a, b) => new Date(b.createdAt) - new Date(a.createdAt)).slice(0, 100)
+  saveFocusSessions(trimmedSessions)
+  
+  return trimmedSessions
+}
+
+// Export focus sessions to a JSON file
+async function exportFocusSessions() {
+  const sessions = loadFocusSessions()
+  
+  if (sessions.length === 0) {
+    alert('No focus sessions to export')
+    return
+  }
+  
+  const dataStr = JSON.stringify(sessions, null, 2)
+  const dataUri = 'data:application/json;charset=utf-8,' + encodeURIComponent(dataStr)
+  
+  const exportFileDefaultName = `focus-sessions-${new Date().toISOString().slice(0, 10)}.json`
+  
+  const linkElement = document.createElement('a')
+  linkElement.setAttribute('href', dataUri)
+  linkElement.setAttribute('download', exportFileDefaultName)
+  linkElement.style.display = 'none'
+  document.body.appendChild(linkElement) // Required for Firefox
+  
+  linkElement.click()
+  
+  document.body.removeChild(linkElement)
+}
+
+// Import focus sessions from a JSON file
+async function importFocusSessions(fileInputEvent) {
+  try {
+    const file = fileInputEvent.target.files[0]
+    if (!file) {
+      return
+    }
+    
+    const reader = new FileReader()
+    
+    reader.onload = function(event) {
+      try {
+        const importedSessions = JSON.parse(event.target.result)
+        
+        if (!Array.isArray(importedSessions)) {
+          throw new Error('Invalid format: imported data is not an array')
+        }
+        
+        const validSessions = importedSessions.filter(session => {
+          return session.startTime && session.endTime && typeof session.attentionScore === 'number'
+        })
+        
+        if (validSessions.length === 0) {
+          throw new Error('No valid focus sessions found in the imported file')
+        }
+        
+        // Merge with existing sessions, avoiding duplicates by ID
+        const existingSessions = loadFocusSessions()
+        const existingIds = new Set(existingSessions.map(s => s.id))
+        
+        const newSessions = [
+          ...existingSessions,
+          ...validSessions.filter(s => !existingIds.has(s.id))
+        ]
+        
+        saveFocusSessions(newSessions)
+        
+        alert(`Successfully imported ${validSessions.length} focus sessions`)
+        
+        // Update UI
+        updateDashboardWithFocusData(newSessions)
+      } catch (error) {
+        console.error('Error parsing imported file:', error)
+        alert(`Error importing focus sessions: ${error.message}`)
+      }
+    }
+    
+    reader.onerror = function() {
+      alert('Error reading the file')
+    }
+    
+    reader.readAsText(file)
+  } catch (error) {
+    console.error('Error importing focus sessions:', error)
+    alert(`Error importing focus sessions: ${error.message}`)
+  }
+}
 
 // Central UI update function
 function updateUI(user) {
@@ -710,6 +841,1064 @@ const classroomService = {
   }
 }
 
+// TensorFlow-based Focus Tracking
+class FocusTracker {
+  constructor() {
+    this.isTracking = false;
+    this.faceDetectionModel = null;
+    this.videoElement = null;
+    this.canvasElement = null;
+    this.canvasContext = null;
+    this.trackingInterval = null;
+    this.timerInterval = null;
+    this.blinkThreshold = 0.3;
+    this.focusData = this.resetFocusData();
+    this.domElements = {};
+    this.modelLoaded = false;
+  }
+  
+  resetFocusData() {
+    return {
+      startTime: null,
+      endTime: null,
+      sessionDuration: 0,
+      blinkRate: 0,
+      attentionScore: 100,
+      distractions: 0,
+      blinkEvents: [],
+      faceDetections: [],
+      focusScoreHistory: []
+    };
+  }
+  
+  async initialize(containerElement) {
+    if (!containerElement) {
+      console.error('No container element provided for focus tracker');
+      return false;
+    }
+    
+    try {
+      // Create UI
+      this.createUI(containerElement);
+      
+      // Setup canvas for visualization
+      this.setupCanvas();
+      
+      // Load TensorFlow and face detection model
+      await this.loadModels();
+      
+      // Set up event listeners
+      this.setupEventListeners();
+      
+      // Update UI to show model loaded
+      this.setInitializationStatus(true);
+      
+      return true;
+    } catch (error) {
+      console.error('Error initializing focus tracker:', error);
+      this.showError(`Failed to initialize focus tracking: ${error.message}`);
+      this.setInitializationStatus(false, error.message);
+      return false;
+    }
+  }
+  
+  createUI(containerElement) {
+    containerElement.innerHTML = `
+      <div class="focus-tracker">
+        <div class="focus-status">
+          <div id="model-loading-status" class="loading-indicator">
+            <span class="material-icons rotating">sync</span>
+            <p>Loading focus tracking model...</p>
+          </div>
+          <div id="model-error" class="error-state" style="display: none;"></div>
+        </div>
+        
+        <div class="focus-main-content" style="display: none;">
+          <div class="focus-camera-container">
+            <div class="video-container">
+              <video id="focus-video" width="320" height="240" autoplay muted playsinline></video>
+              <canvas id="focus-overlay" width="320" height="240"></canvas>
+              <div class="face-detection-indicator" id="face-indicator">
+                <span class="material-icons">face</span>
+              </div>
+            </div>
+          </div>
+          
+          <div class="focus-stats">
+            <div class="focus-score-container">
+              <div class="focus-score">
+                <span id="focus-score-value">100</span>
+              </div>
+              <div class="focus-score-label">Focus Score</div>
+            </div>
+            
+            <div class="focus-metrics">
+              <div class="metric-item">
+                <span class="material-icons">visibility</span>
+                <div>
+                  <div class="metric-label">Blink Rate</div>
+                  <div class="metric-value"><span id="blink-rate">0</span>/min</div>
+                </div>
+              </div>
+              
+              <div class="metric-item">
+                <span class="material-icons">warning</span>
+                <div>
+                  <div class="metric-label">Distractions</div>
+                  <div class="metric-value"><span id="distraction-count">0</span></div>
+                </div>
+              </div>
+              
+              <div class="metric-item">
+                <span class="material-icons">timer</span>
+                <div>
+                  <div class="metric-label">Session Time</div>
+                  <div class="metric-value"><span id="session-time">00:00</span></div>
+                </div>
+              </div>
+            </div>
+          </div>
+          
+          <div class="focus-controls">
+            <button id="start-tracking" class="primary-button">
+              <span class="material-icons">play_arrow</span>
+              Start Tracking
+            </button>
+            <button id="stop-tracking" class="secondary-button" disabled>
+              <span class="material-icons">stop</span>
+              Stop Tracking
+            </button>
+          </div>
+          
+          <div class="focus-history">
+            <h3>Recent Focus Sessions</h3>
+            <div id="focus-sessions-list" class="sessions-list">
+            <div class="empty-state">No recent focus sessions found</div>
+            </div>
+            
+            <div class="focus-history-controls">
+              <button id="export-sessions" class="secondary-button">
+                <span class="material-icons">download</span>
+                Export Data
+              </button>
+              <label for="import-sessions" class="secondary-button upload-button">
+                <span class="material-icons">upload</span>
+                Import Data
+              </label>
+              <input type="file" id="import-sessions" accept=".json" style="display: none;">
+            </div>
+          </div>
+        </div>
+        
+        <div id="focus-error" class="focus-error" style="display: none;"></div>
+      </div>
+    `;
+    
+    // Store references to DOM elements
+    this.videoElement = document.getElementById('focus-video');
+    this.canvasElement = document.getElementById('focus-overlay');
+    this.domElements = {
+      modelLoading: document.getElementById('model-loading-status'),
+      modelError: document.getElementById('model-error'),
+      mainContent: document.querySelector('.focus-main-content'),
+      faceIndicator: document.getElementById('face-indicator'),
+      focusScore: document.getElementById('focus-score-value'),
+      blinkRate: document.getElementById('blink-rate'),
+      distractionCount: document.getElementById('distraction-count'),
+      sessionTime: document.getElementById('session-time'),
+      startButton: document.getElementById('start-tracking'),
+      stopButton: document.getElementById('stop-tracking'),
+      errorContainer: document.getElementById('focus-error'),
+      sessionsList: document.getElementById('focus-sessions-list'),
+      exportButton: document.getElementById('export-sessions'),
+      importInput: document.getElementById('import-sessions')
+    };
+  }
+  
+  setupCanvas() {
+    if (this.canvasElement) {
+      this.canvasContext = this.canvasElement.getContext('2d');
+    }
+  }
+  
+  async loadModels() {
+    try {
+      // Load TensorFlow.js if not already loaded
+      if (!window.tf) {
+        await import('@tensorflow/tfjs');
+        console.log('TensorFlow.js loaded');
+      }
+      
+      // Load face detection model
+      const faceDetection = await import('@tensorflow-models/face-detection');
+      
+      // Create detector with MediaPipe FaceDetector
+      this.faceDetectionModel = await faceDetection.createDetector(
+        faceDetection.SupportedModels.MediaPipeFaceDetector,
+        {
+          runtime: 'tfjs',
+          maxFaces: 1,
+          modelType: 'short'
+        }
+      );
+      
+      console.log('Face detection model loaded');
+      this.modelLoaded = true;
+      return true;
+    } catch (error) {
+      console.error('Error loading models:', error);
+      this.modelLoaded = false;
+      throw error;
+    }
+  }
+  
+  setInitializationStatus(success, errorMessage = '') {
+    if (success) {
+      this.domElements.modelLoading.style.display = 'none';
+      this.domElements.modelError.style.display = 'none';
+      this.domElements.mainContent.style.display = 'block';
+      
+      // Load and display previous sessions
+      this.loadAndDisplaySessions();
+    } else {
+      this.domElements.modelLoading.style.display = 'none';
+      this.domElements.modelError.style.display = 'block';
+      this.domElements.modelError.innerHTML = `
+        <p>Error initializing focus tracking: ${errorMessage}</p>
+        <button id="retry-model-loading" class="primary-button">
+          <span class="material-icons">refresh</span>
+          Retry
+        </button>
+      `;
+      
+      document.getElementById('retry-model-loading')?.addEventListener('click', async () => {
+        this.domElements.modelError.style.display = 'none';
+        this.domElements.modelLoading.style.display = 'flex';
+        try {
+          await this.loadModels();
+          this.setInitializationStatus(true);
+        } catch (error) {
+          this.setInitializationStatus(false, error.message);
+        }
+      });
+    }
+  }
+  
+  setupEventListeners() {
+    // Start tracking button
+    this.domElements.startButton.addEventListener('click', () => this.startTracking());
+    
+    // Stop tracking button
+    this.domElements.stopButton.addEventListener('click', () => this.stopTracking());
+    
+    // Export sessions button
+    this.domElements.exportButton.addEventListener('click', () => exportFocusSessions());
+    
+    // Import sessions input
+    this.domElements.importInput.addEventListener('change', (e) => importFocusSessions(e));
+  }
+  
+  loadAndDisplaySessions() {
+    const sessions = loadFocusSessions();
+    this.updateSessionsList(sessions);
+  }
+  
+  updateSessionsList(sessions) {
+    const sessionsList = this.domElements.sessionsList;
+    if (!sessionsList) return;
+    
+    if (sessions.length === 0) {
+      sessionsList.innerHTML = `<div class="empty-state">No recent focus sessions found</div>`;
+      return;
+    }
+    
+    // Sort sessions by date, newest first
+    const sortedSessions = [...sessions].sort((a, b) => 
+      new Date(b.startTime || b.createdAt || 0) - new Date(a.startTime || a.createdAt || 0)
+    );
+    
+    // Take only the 5 most recent sessions
+    const recentSessions = sortedSessions.slice(0, 5);
+    
+    sessionsList.innerHTML = recentSessions.map(session => {
+      const startTime = new Date(session.startTime);
+      const endTime = new Date(session.endTime);
+      const duration = Math.floor((endTime - startTime) / 1000 / 60); // Duration in minutes
+      const formattedDate = startTime.toLocaleDateString();
+      const formattedTime = startTime.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+      
+      return `
+        <div class="session-item">
+          <div class="session-date">${formattedDate}, ${formattedTime}</div>
+          <div class="session-details">
+            <div class="session-duration">${duration} min</div>
+            <div class="session-focus">Score: ${Math.round(session.attentionScore)}</div>
+          </div>
+        </div>
+      `;
+    }).join('');
+  }
+  
+  async startTracking() {
+    if (this.isTracking) return;
+    
+    try {
+      // Request camera access
+      const stream = await navigator.mediaDevices.getUserMedia({
+        video: {
+          facingMode: 'user',
+          width: { ideal: 640 },
+          height: { ideal: 480 }
+        }
+      });
+      
+      // Connect stream to video element
+      this.videoElement.srcObject = stream;
+      
+      // Reset focus data
+      this.focusData = this.resetFocusData();
+      this.focusData.startTime = Date.now();
+      
+      // Update UI
+      this.domElements.startButton.disabled = true;
+      this.domElements.stopButton.disabled = false;
+      this.domElements.faceIndicator.classList.remove('face-detected', 'no-face-detected');
+      this.isTracking = true;
+      
+      // Start tracking loop
+      this.trackingInterval = setInterval(() => this.trackFocus(), 100);
+      
+      // Start session timer
+      this.timerInterval = setInterval(() => this.updateSessionTime(), 1000);
+      
+      console.log('Focus tracking started');
+    } catch (error) {
+      console.error('Failed to start focus tracking:', error);
+      this.showError(`Failed to start tracking: ${error.message}`);
+    }
+  }
+  
+  stopTracking() {
+    if (!this.isTracking) return;
+    
+    // Stop video stream
+    if (this.videoElement && this.videoElement.srcObject) {
+      const tracks = this.videoElement.srcObject.getTracks();
+      tracks.forEach(track => track.stop());
+      this.videoElement.srcObject = null;
+    }
+    
+    // Stop intervals
+    clearInterval(this.trackingInterval);
+    clearInterval(this.timerInterval);
+    
+    // Update focus data
+    this.focusData.endTime = Date.now();
+    this.focusData.sessionDuration = (this.focusData.endTime - this.focusData.startTime) / 1000; // in seconds
+    
+    // Update UI
+    this.domElements.startButton.disabled = false;
+    this.domElements.stopButton.disabled = true;
+    this.isTracking = false;
+    
+    // Clear canvas
+    if (this.canvasContext) {
+      this.canvasContext.clearRect(0, 0, this.canvasElement.width, this.canvasElement.height);
+    }
+    
+    // Save session data
+    this.saveSession();
+    
+    // Final update
+    this.updateStats();
+    
+    console.log('Focus tracking stopped');
+    
+    return this.focusData;
+  }
+  
+  saveSession() {
+    // Save to local storage
+    saveNewFocusSession(this.focusData);
+    
+    // Update session list
+    this.loadAndDisplaySessions();
+  }
+  
+  async trackFocus() {
+    if (!this.isTracking || !this.modelLoaded || !this.faceDetectionModel) return;
+    
+    try {
+      // Detect faces
+      const faces = await this.faceDetectionModel.estimateFaces(this.videoElement);
+      
+      // Update face detection status
+      const faceDetected = faces.length > 0;
+      this.updateFaceIndicator(faceDetected);
+      
+      if (faceDetected) {
+        // Process face for blink detection and focus metrics
+        const face = faces[0];
+        this.processFaceData(face);
+        
+        // Draw face landmarks for visualization
+        this.drawFaceLandmarks(face);
+      } else {
+        // No face detected - record distraction
+        this.recordDistraction();
+        
+        // Clear canvas when no face is detected
+        if (this.canvasContext) {
+          this.canvasContext.clearRect(0, 0, this.canvasElement.width, this.canvasElement.height);
+        }
+      }
+      
+      // Update stats display
+      this.updateStats();
+    } catch (error) {
+      console.error('Error during focus tracking:', error);
+    }
+  }
+  
+  processFaceData(face) {
+    // Record face detection
+    this.focusData.faceDetections.push({
+      timestamp: Date.now(),
+      boundingBox: face.box
+    });
+    
+    // Using eye aspect ratio (EAR) to detect blinks
+    const leftEye = this.extractEyeKeypoints(face, 'leftEye');
+    const rightEye = this.extractEyeKeypoints(face, 'rightEye');
+    
+    if (leftEye.length > 0 && rightEye.length > 0) {
+      const leftEAR = this.calculateEAR(leftEye);
+      const rightEAR = this.calculateEAR(rightEye);
+      const avgEAR = (leftEAR + rightEAR) / 2;
+      
+      // Check for blink
+      const isBlinking = avgEAR < this.blinkThreshold;
+      
+      // Record blink event
+      if (isBlinking) {
+        this.focusData.blinkEvents.push({
+          timestamp: Date.now(),
+          eyeOpenness: avgEAR
+        });
+      }
+      
+      // Update blink rate (blinks per minute)
+      const sessionDurationMinutes = (Date.now() - this.focusData.startTime) / 60000;
+      this.focusData.blinkRate = this.focusData.blinkEvents.length / Math.max(sessionDurationMinutes, 0.1);
+      
+      // Update attention score based on blink rate
+      this.updateAttentionScore(avgEAR, isBlinking);
+    }
+  }
+  
+  extractEyeKeypoints(face, eyeType) {
+    // Extract eye keypoints from face detection result
+    if (!face.keypoints) return [];
+    
+    // Face detection model typically provides keypoints with names
+    return face.keypoints.filter(keypoint => 
+      keypoint.name && keypoint.name.includes(eyeType)
+    );
+  }
+  
+  calculateEAR(eyePoints) {
+    if (eyePoints.length < 4) return 1.0; // Default to eyes open if insufficient points
+    
+    // Simplified EAR calculation - vertical distance / horizontal distance
+    let minY = Infinity, maxY = -Infinity;
+    let minX = Infinity, maxX = -Infinity;
+    
+    eyePoints.forEach(point => {
+      minY = Math.min(minY, point.y);
+      maxY = Math.max(maxY, point.y);
+      minX = Math.min(minX, point.x);
+      maxX = Math.max(maxX, point.x);
+    });
+    
+    const verticalDist = maxY - minY;
+    const horizontalDist = maxX - minX;
+    
+    if (horizontalDist === 0) return 1.0;
+    
+    return verticalDist / horizontalDist;
+  }
+  
+  updateAttentionScore(eyeOpenness, isBlinking) {
+    // Current attention score
+    let score = this.focusData.attentionScore;
+    
+    // Factors affecting attention score
+    if (!isBlinking) {
+      // Normal eye state - gradually increase score
+      if (this.focusData.blinkRate >= 10 && this.focusData.blinkRate <= 30) {
+        // Healthy blink rate (10-30 blinks per minute)
+        score = Math.min(score + 0.2, 100);
+      } else if (this.focusData.blinkRate < 10) {
+        // Too few blinks - potential staring, slight decrease
+        score = Math.max(score - 0.1, 40);
+      } else if (this.focusData.blinkRate > 30) {
+        // Too many blinks - potential fatigue
+        score = Math.max(score - 0.2, 20);
+      }
+    }
+    
+    // Record score in history
+    this.focusData.focusScoreHistory.push({
+      timestamp: Date.now(),
+      score: score
+    });
+    
+    // Update score
+    this.focusData.attentionScore = score;
+  }
+  
+  recordDistraction() {
+    // Only count as distraction if the previous state had a face
+    const previousDetections = this.focusData.faceDetections;
+    if (previousDetections.length > 0) {
+      const lastDetection = previousDetections[previousDetections.length - 1];
+      const timeSinceLastDetection = Date.now() - lastDetection.timestamp;
+      
+      // If face was detected recently (within 1 second) but now gone, count as distraction
+      if (timeSinceLastDetection < 1000) {
+        this.focusData.distractions++;
+        
+        // Reduce attention score for distraction
+        this.focusData.attentionScore = Math.max(this.focusData.attentionScore - 5, 0);
+        
+        // Record score in history
+        this.focusData.focusScoreHistory.push({
+          timestamp: Date.now(),
+          score: this.focusData.attentionScore
+        });
+      }
+    }
+  }
+  
+  drawFaceLandmarks(face) {
+    if (!this.canvasContext || !face) return;
+    
+    // Clear canvas
+    this.canvasContext.clearRect(0, 0, this.canvasElement.width, this.canvasElement.height);
+    
+    // Draw bounding box
+    const box = face.box;
+    this.canvasContext.strokeStyle = '#00ff00';
+    this.canvasContext.lineWidth = 2;
+    this.canvasContext.strokeRect(box.xMin, box.yMin, box.width, box.height);
+    
+    // Draw keypoints
+    if (face.keypoints) {
+      face.keypoints.forEach(keypoint => {
+        // Different colors for different facial features
+        if (keypoint.name.includes('eye')) {
+          this.canvasContext.fillStyle = '#00ffff';
+        } else if (keypoint.name.includes('nose')) {
+          this.canvasContext.fillStyle = '#ffff00';
+        } else if (keypoint.name.includes('mouth')) {
+          this.canvasContext.fillStyle = '#ff00ff';
+        } else {
+          this.canvasContext.fillStyle = '#ff0000';
+        }
+        
+        this.canvasContext.beginPath();
+        this.canvasContext.arc(keypoint.x, keypoint.y, 3, 0, 2 * Math.PI);
+        this.canvasContext.fill();
+      });
+    }
+  }
+  
+  updateFaceIndicator(faceDetected) {
+    if (!this.domElements.faceIndicator) return;
+    
+    this.domElements.faceIndicator.classList.remove('face-detected', 'no-face-detected');
+    this.domElements.faceIndicator.classList.add(faceDetected ? 'face-detected' : 'no-face-detected');
+  }
+  
+  updateStats() {
+    // Update focus score
+    this.domElements.focusScore.textContent = Math.round(this.focusData.attentionScore);
+    
+    // Update blink rate
+    this.domElements.blinkRate.textContent = Math.round(this.focusData.blinkRate);
+    
+    // Update distraction count
+    this.domElements.distractionCount.textContent = this.focusData.distractions;
+  }
+  
+  updateSessionTime() {
+    const sessionDurationSeconds = Math.floor((Date.now() - this.focusData.startTime) / 1000);
+    const minutes = Math.floor(sessionDurationSeconds / 60).toString().padStart(2, '0');
+    const seconds = (sessionDurationSeconds % 60).toString().padStart(2, '0');
+    this.domElements.sessionTime.textContent = `${minutes}:${seconds}`;
+  }
+  
+  showError(message) {
+    if (!this.domElements.errorContainer) return;
+    
+    this.domElements.errorContainer.textContent = message;
+    this.domElements.errorContainer.style.display = 'block';
+    
+    setTimeout(() => {
+      this.domElements.errorContainer.style.display = 'none';
+    }, 5000);
+  }
+}
+
+// Initialize focus tracker instance
+let focusTracker = null;
+
+// Function to initialize focus tracking components
+async function initializeFocusTracking() {
+  const focusContainer = document.getElementById('focus-tracking-container');
+  if (!focusContainer) {
+    console.error('Focus tracking container not found');
+    return;
+  }
+  
+  // Create focus tracker if not exists
+  if (!focusTracker) {
+    focusTracker = new FocusTracker();
+    await focusTracker.initialize(focusContainer);
+  }
+}
+
+// Update dashboard with focus session data
+function updateDashboardWithFocusData(sessions) {
+  if (!sessions || sessions.length === 0) return;
+  
+  // Calculate total study time (in hours)
+  const totalStudyTimeHours = sessions.reduce((total, session) => {
+    const duration = session.sessionDuration || 
+      ((session.endTime - session.startTime) / 1000 / 3600);
+    return total + duration;
+  }, 0);
+  
+  // Calculate average focus score
+  const avgFocusScore = sessions.reduce((total, session) => 
+    total + session.attentionScore, 0) / sessions.length;
+  
+  // Find completed modules (sessions with score > 70)
+  const completedModules = sessions.filter(session => session.attentionScore > 70).length;
+  
+  // Update dashboard UI if elements exist
+  const studyTimeElement = document.querySelector('.stat-card:nth-child(1) .stat-value');
+  const avgFocusElement = document.querySelector('.stat-card:nth-child(2) .stat-value');
+  const modulesElement = document.querySelector('.stat-card:nth-child(3) .stat-value');
+  
+  if (studyTimeElement) {
+    studyTimeElement.textContent = `${totalStudyTimeHours.toFixed(1)}h`;
+  }
+  
+  if (avgFocusElement) {
+    avgFocusElement.textContent = `${Math.round(avgFocusScore)}%`;
+  }
+  
+  if (modulesElement) {
+    modulesElement.textContent = completedModules.toString();
+  }
+  
+  // Update recent sessions list in dashboard
+  updateRecentSessionsList(sessions);
+}
+
+// Update recent sessions list in dashboard
+function updateRecentSessionsList(sessions) {
+  const recentSessionsList = document.querySelector('.sessions-list');
+  if (!recentSessionsList) return;
+  
+  if (sessions.length === 0) {
+    recentSessionsList.innerHTML = `
+      <p class="empty-state">
+        No recent study sessions found. Start tracking your focus to see data here.
+      </p>
+    `;
+    return;
+  }
+  
+  // Sort sessions by date, newest first
+  const sortedSessions = [...sessions].sort((a, b) => 
+    new Date(b.startTime || b.createdAt || 0) - new Date(a.startTime || a.createdAt || 0)
+  );
+  
+  // Take the 5 most recent sessions
+  const recentSessions = sortedSessions.slice(0, 5);
+  
+  recentSessionsList.innerHTML = recentSessions.map(session => {
+    const startTime = new Date(session.startTime);
+    const formattedDate = startTime.toLocaleDateString();
+    const formattedTime = startTime.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+    const duration = Math.round((session.endTime - session.startTime) / 1000 / 60); // Duration in minutes
+    
+    return `
+      <div class="session-item">
+        <div class="session-date">
+          <span class="material-icons">event</span>
+          ${formattedDate}, ${formattedTime}
+        </div>
+        <div class="session-details">
+          <div class="session-duration">
+            <span class="material-icons">timer</span>
+            ${duration} min
+          </div>
+          <div class="session-focus">
+            <span class="material-icons">psychology</span>
+            Score: ${Math.round(session.attentionScore)}%
+          </div>
+        </div>
+      </div>
+    `;
+  }).join('');
+}
+
+// Enhanced curriculum generation using TensorFlow
+async function createCurriculumModel() {
+  // Create a simple model for prioritizing assignments
+  const model = tf.sequential();
+  
+  model.add(tf.layers.dense({
+    units: 10,
+    activation: 'relu',
+    inputShape: [5] // Complexity, time required, due date, etc.
+  }));
+  
+  model.add(tf.layers.dense({
+    units: 5,
+    activation: 'relu'
+  }));
+  
+  model.add(tf.layers.dense({
+    units: 1,
+    activation: 'sigmoid' // Priority score between 0 and 1
+  }));
+  
+  model.compile({
+    optimizer: tf.train.adam(0.01),
+    loss: 'binaryCrossentropy',
+    metrics: ['accuracy']
+  });
+  
+  return model;
+}
+
+// Extract features from course data for AI-based curriculum generation
+function extractFeaturesFromCourseData(courses) {
+  return courses.reduce((allFeatures, course) => {
+    if (!course.courseWork || course.courseWork.length === 0) {
+      return allFeatures;
+    }
+    
+    const courseFeatures = course.courseWork.map(work => {
+      // Calculate assignment complexity based on description length, title, etc.
+      const complexityScore = calculateAssignmentComplexity(work);
+      
+      // Calculate estimated time required
+      const timeRequired = estimateTimeRequired(work);
+      
+      // Calculate due window (days until due)
+      const dueWindow = calculateDueWindow(work);
+      
+      // Calculate priority level
+      const priorityLevel = calculatePriorityLevel(work, complexityScore, dueWindow);
+      
+      return {
+        courseId: course.id,
+        courseName: course.name,
+        workId: work.id,
+        workTitle: work.title,
+        workType: work.workType || 'ASSIGNMENT',
+        assignmentComplexity: complexityScore,
+        timeRequired,
+        dueWindow,
+        priorityLevel,
+        dueDate: work.dueDate ? createDateFromDueDate(work.dueDate) : null,
+        originalWork: work
+      };
+    });
+    
+    return [...allFeatures, ...courseFeatures];
+  }, []);
+}
+
+// Calculate assignment complexity score
+function calculateAssignmentComplexity(work) {
+  let complexity = 0;
+  
+  // Base complexity by work type
+  switch (work.workType) {
+    case 'ASSIGNMENT':
+      complexity = 3;
+      break;
+    case 'SHORT_ANSWER_QUESTION':
+      complexity = 2;
+      break;
+    case 'MULTIPLE_CHOICE_QUESTION':
+      complexity = 1;
+      break;
+    case 'QUIZ':
+      complexity = 4;
+      break;
+    case 'TEST':
+      complexity = 5;
+      break;
+    default:
+      complexity = 2;
+  }
+  
+  // Add complexity based on description length if available
+  if (work.description) {
+    // Longer descriptions usually mean more complex assignments
+    complexity += Math.min(work.description.length / 200, 3);
+  }
+  
+  // Normalize to 0-1 range
+  return Math.min(complexity / 10, 1);
+}
+
+// Estimate time required for assignment
+function estimateTimeRequired(work) {
+  let baseTime = 0; // in hours
+  
+  // Base time by work type
+  switch (work.workType) {
+    case 'ASSIGNMENT':
+      baseTime = 1.5;
+      break;
+    case 'SHORT_ANSWER_QUESTION':
+      baseTime = 0.5;
+      break;
+    case 'MULTIPLE_CHOICE_QUESTION':
+      baseTime = 0.25;
+      break;
+    case 'QUIZ':
+      baseTime = 1;
+      break;
+    case 'TEST':
+      baseTime = 2;
+      break;
+    default:
+      baseTime = 1;
+  }
+  
+  // Adjust based on description length
+  if (work.description) {
+    baseTime += Math.min(work.description.length / 500, 1);
+  }
+  
+  // Normalize to 0-1 range (assuming max 5 hours)
+  return Math.min(baseTime / 5, 1);
+}
+
+// Calculate due window (days until due)
+function calculateDueWindow(work) {
+  if (!work.dueDate) {
+    return 1; // Far in the future if no due date
+  }
+  
+  const today = new Date();
+  const dueDate = createDateFromDueDate(work.dueDate);
+  const diffTime = dueDate - today;
+  const diffDays = Math.ceil(diffTime / (1000 * 60 * 60 * 24));
+  
+  // Normalize to 0-1 range (0 = due today, 1 = due in 14+ days)
+  return Math.max(0, Math.min(diffDays / 14, 1));
+}
+
+// Calculate priority level
+function calculatePriorityLevel(work, complexity, dueWindow) {
+  // Priority increases with complexity and decreases with due window
+  // Due window has more weight (urgent items are higher priority)
+  return (complexity * 0.3) + ((1 - dueWindow) * 0.7);
+}
+
+// Generate smart curriculum using TensorFlow model
+async function generateSmartCurriculum(coursesData, userPreferences = {}) {
+  try {
+    // Extract features from course data
+    const features = extractFeaturesFromCourseData(coursesData);
+    
+    if (features.length === 0) {
+      return { success: false, message: 'No course work available to generate curriculum' };
+    }
+    
+    // Set default preferences if not provided
+    const preferences = {
+      preferredDifficulty: 0.5, // Medium difficulty
+      availableHoursPerWeek: 10, // Default 10 hours/week
+      prioritizeDeadlines: true,
+      ...userPreferences
+    };
+    
+    // Load TensorFlow.js if not already loaded
+    if (!window.tf) {
+      await import('@tensorflow/tfjs');
+    }
+    
+    // Create or load the model
+    const model = await createCurriculumModel();
+    
+    // Calculate optimal study plan
+    const studyPlan = optimizeStudyPlan(features, preferences);
+    
+    // Create a weekly schedule
+    const weeklySchedule = createWeeklySchedule(studyPlan, coursesData);
+    
+    return {
+      success: true,
+      weeklySchedule,
+      totalAssignments: features.length,
+      totalEstimatedHours: calculateTotalHours(studyPlan),
+      courseBreakdown: calculateCourseBreakdown(studyPlan)
+    };
+  } catch (error) {
+    console.error('Error generating smart curriculum:', error);
+    return { 
+      success: false, 
+      message: `Failed to generate curriculum: ${error.message}` 
+    };
+  }
+}
+
+// Optimize study plan based on features and preferences
+function optimizeStudyPlan(features, preferences) {
+  // Sort features by priority
+  let sortedFeatures = [...features];
+  
+  if (preferences.prioritizeDeadlines) {
+    // Prioritize by due date first, then by complexity
+    sortedFeatures.sort((a, b) => {
+      // If both have due dates, sort by due date
+      if (a.dueDate && b.dueDate) {
+        return a.dueDate - b.dueDate;
+      }
+      // If only one has a due date, prioritize it
+      if (a.dueDate) return -1;
+      if (b.dueDate) return 1;
+      
+      // If neither has a due date, sort by complexity based on preference
+      if (preferences.preferredDifficulty >= 0.5) {
+        // Prefer more complex assignments
+        return b.assignmentComplexity - a.assignmentComplexity;
+      } else {
+        // Prefer less complex assignments
+        return a.assignmentComplexity - b.assignmentComplexity;
+      }
+    });
+  } else {
+    // Sort by calculated priority level
+    sortedFeatures.sort((a, b) => b.priorityLevel - a.priorityLevel);
+  }
+  
+  return sortedFeatures;
+}
+
+// Create weekly schedule from optimized study plan
+function createWeeklySchedule(studyPlan, originalCourseData) {
+  const weeklySchedule = [];
+  const daysOfWeek = 7;
+  
+  // Initialize schedule for 4 weeks
+  for (let week = 0; week < 4; week++) {
+    const weekStart = new Date();
+    weekStart.setDate(weekStart.getDate() + (week * 7));
+    
+    const weekEnd = new Date(weekStart);
+    weekEnd.setDate(weekEnd.getDate() + 6);
+    
+    weeklySchedule.push({
+      week: week + 1,
+      startDate: weekStart,
+      endDate: weekEnd,
+      days: []
+    });
+    
+    // Initialize days for the week
+    for (let day = 0; day < daysOfWeek; day++) {
+      const dayDate = new Date(weekStart);
+      dayDate.setDate(dayDate.getDate() + day);
+      
+      weeklySchedule[week].days.push({
+        day,
+        date: dayDate,
+        assignments: []
+      });
+    }
+  }
+  
+  // Distribute assignments across the schedule
+  let currentWeek = 0;
+  let currentDay = 0;
+  let currentDayHours = 0;
+  const maxHoursPerDay = 3; // Configurable
+  
+  studyPlan.forEach(assignment => {
+    const estimatedHours = assignment.timeRequired * 5; // Convert from normalized value
+    
+    // Check if we need to move to the next day
+    if (currentDayHours + estimatedHours > maxHoursPerDay) {
+      currentDay = (currentDay + 1) % daysOfWeek;
+      currentDayHours = 0;
+      
+      // Check if we need to move to the next week
+      if (currentDay === 0) {
+        currentWeek = (currentWeek + 1) % 4;
+      }
+    }
+    
+    // Add assignment to the schedule
+    weeklySchedule[currentWeek].days[currentDay].assignments.push({
+      id: assignment.workId,
+      title: assignment.workTitle,
+      courseId: assignment.courseId,
+      courseName: assignment.courseName,
+      estimatedHours,
+      dueDate: assignment.dueDate,
+      type: assignment.workType,
+      complexity: assignment.assignmentComplexity
+    });
+    
+    // Update current day hours
+    currentDayHours += estimatedHours;
+  });
+  
+  return weeklySchedule;
+}
+
+// Calculate total estimated hours for the curriculum
+function calculateTotalHours(studyPlan) {
+  return studyPlan.reduce((total, assignment) => {
+    return total + (assignment.timeRequired * 5); // Convert from normalized value
+  }, 0);
+}
+
+// Calculate course breakdown for the curriculum
+function calculateCourseBreakdown(studyPlan) {
+  const courseData = {};
+  
+  studyPlan.forEach(assignment => {
+    if (!courseData[assignment.courseName]) {
+      courseData[assignment.courseName] = {
+        assignmentCount: 0,
+        totalHours: 0
+      };
+    }
+    
+    courseData[assignment.courseName].assignmentCount++;
+    courseData[assignment.courseName].totalHours += (assignment.timeRequired * 5);
+  });
+  
+  return Object.entries(courseData).map(([courseName, data]) => ({
+    courseName,
+    assignmentCount: data.assignmentCount,
+    totalHours: data.totalHours
+  }));
+}
+
 // Initialize the application
 async function initApp() {
   console.log('Initializing application...')
@@ -724,6 +1913,9 @@ async function initApp() {
 
     // Initialize theme
     themeManager.initialize()
+
+    // Load focus sessions
+    loadFocusSessions();
 
     // Initialize UI elements
     createFocusChart()
@@ -749,6 +1941,10 @@ async function initApp() {
         // Don't remove the token here, let the API call handle that
       }
     }
+    
+    // Update dashboard with focus session data
+    const sessions = loadFocusSessions();
+    updateDashboardWithFocusData(sessions);
   } catch (error) {
     console.error('Error during app initialization:', error)
   }
@@ -1137,15 +2333,22 @@ function updateGenerateButton() {
     generateButtonContainer.style.display = 'block'
     generateButtonContainer.innerHTML = `
       <div class="selected-count">${selectedCourses.length} course${selectedCourses.length === 1 ? '' : 's'} selected</div>
-      <button id="generate-curriculum-btn" class="primary-button">
-        <span class="material-icons">auto_awesome</span>
-        Generate Curriculum
-      </button>
+      <div class="generate-buttons">
+        <button id="generate-smart-curriculum-btn" class="primary-button">
+          <span class="material-icons">psychology</span>
+          Smart Curriculum
+        </button>
+      </div>
     `
 
     // Add event listener for generate button
     document.getElementById('generate-curriculum-btn')?.addEventListener('click', () => {
-      generateCurriculum(selectedCourses)
+      generateCurriculum(selectedCourses, false) // Regular generation
+    })
+    
+    // Add event listener for smart generate button
+    document.getElementById('generate-smart-curriculum-btn')?.addEventListener('click', () => {
+      generateCurriculum(selectedCourses, true) // Smart AI-based generation
     })
   } else {
     generateButtonContainer.style.display = 'none'
@@ -1159,13 +2362,13 @@ function getSelectedCourses() {
   return Array.from(selectedCheckboxes).map((checkbox) => checkbox.dataset.courseId)
 }
 
-async function generateCurriculum(courseIds) {
+async function generateCurriculum(courseIds, useSmart = false) {
   if (!courseIds || courseIds.length === 0) {
     alert('Please select at least one course to generate a curriculum.')
     return
   }
 
-  const generateButton = document.getElementById('generate-curriculum-btn')
+  const generateButton = document.getElementById(useSmart ? 'generate-smart-curriculum-btn' : 'generate-curriculum-btn')
   const generateButtonContainer = document.getElementById('generate-button-container')
 
   if (generateButton) {
@@ -1178,6 +2381,17 @@ async function generateCurriculum(courseIds) {
   }
 
   try {
+    // Show loading overlay
+    const loadingOverlay = document.createElement('div')
+    loadingOverlay.className = 'loading-overlay'
+    loadingOverlay.innerHTML = `
+      <div class="loading-content">
+        <span class="material-icons rotating">psychology</span>
+        <p>${useSmart ? 'Analyzing course data and generating smart curriculum...' : 'Generating curriculum...'}</p>
+      </div>
+    `
+    document.body.appendChild(loadingOverlay)
+
     // Collect course details for selected courses
     const selectedCourses = []
     for (const courseId of courseIds) {
@@ -1197,21 +2411,242 @@ async function generateCurriculum(courseIds) {
       }
     }
 
-    // Show success and navigate to the new curriculum view
-    showGeneratedCurriculum(selectedCourses)
+    // Generate curriculum based on method
+    if (useSmart) {
+      // Get focus sessions for preferences
+      const focusSessions = loadFocusSessions()
+      
+      // Extract user preferences
+      const userPreferences = extractUserPreferencesFromFocusSessions(focusSessions)
+      
+      // Generate smart curriculum
+      const smartResult = await generateSmartCurriculum(selectedCourses, userPreferences)
+      
+      if (smartResult.success) {
+        showSmartCurriculum(selectedCourses, smartResult)
+      } else {
+        alert(smartResult.message || 'Failed to generate smart curriculum')
+      }
+    } else {
+      // Show normal curriculum
+      showGeneratedCurriculum(selectedCourses)
+    }
+    
+    // Remove loading overlay
+    document.body.removeChild(loadingOverlay)
   } catch (error) {
     console.error('Error generating curriculum:', error)
     alert(`Failed to generate curriculum: ${error.message}`)
 
+    // Remove any loading overlay
+    const existingOverlay = document.querySelector('.loading-overlay')
+    if (existingOverlay) {
+      document.body.removeChild(existingOverlay)
+    }
+  } finally {
     if (generateButton) {
       // Reset button state
       generateButton.disabled = false
-      generateButton.innerHTML = `
-        <span class="material-icons">auto_awesome</span>
-        Generate Curriculum
-      `
+      generateButton.innerHTML = useSmart ? 
+        `<span class="material-icons">psychology</span> Smart Curriculum` : 
+        `<span class="material-icons">auto_awesome</span> Generate Curriculum`
     }
   }
+}
+
+// Extract user preferences from focus sessions
+function extractUserPreferencesFromFocusSessions(sessions) {
+  if (!sessions || sessions.length === 0) {
+    return {
+      preferredDifficulty: 0.5, // Default medium difficulty
+      availableHoursPerWeek: 10, // Default 10 hours/week
+      prioritizeDeadlines: true
+    }
+  }
+  
+  // Calculate average session duration
+  const avgSessionDuration = sessions.reduce((total, session) => {
+    const duration = (session.endTime - session.startTime) / (1000 * 60 * 60) // hours
+    return total + duration
+  }, 0) / sessions.length
+  
+  // Calculate average attention score
+  const avgAttentionScore = sessions.reduce((total, session) => {
+    return total + session.attentionScore
+  }, 0) / sessions.length
+  
+  // Estimate available time per week based on past sessions
+  const sessionsPerWeek = Math.min(sessions.length / 4, 5) // Assume data from last 4 weeks, max 5 sessions/week
+  const availableHoursPerWeek = Math.max(5, Math.min(20, sessionsPerWeek * avgSessionDuration))
+  
+  // Determine preferred difficulty based on attention score
+  // Higher attention score = can handle higher difficulty
+  const preferredDifficulty = avgAttentionScore >= 80 ? 0.8 : 
+                             avgAttentionScore >= 60 ? 0.6 : 
+                             avgAttentionScore >= 40 ? 0.4 : 0.3
+  
+  return {
+    preferredDifficulty,
+    availableHoursPerWeek,
+    prioritizeDeadlines: true // Default to prioritizing deadlines
+  }
+}
+
+// Display smart curriculum
+function showSmartCurriculum(courses, smartResult) {
+  // Hide courses container and show curriculum view
+  const coursesContainer = document.getElementById('courses-container')
+  const generateButtonContainer = document.getElementById('generate-button-container')
+
+  if (coursesContainer) {
+    coursesContainer.style.display = 'none'
+  }
+
+  if (generateButtonContainer) {
+    generateButtonContainer.style.display = 'none'
+  }
+
+  // Create curriculum container if it doesn't exist
+  let curriculumContainer = document.getElementById('generated-curriculum-container')
+  if (!curriculumContainer) {
+    curriculumContainer = document.createElement('div')
+    curriculumContainer.id = 'generated-curriculum-container'
+    curriculumContainer.className = 'generated-curriculum-container'
+
+    const curriculumContent = document.getElementById('curriculum-content')
+    if (curriculumContent) {
+      curriculumContent.appendChild(curriculumContainer)
+    }
+  }
+
+  // Get course and assignment counts
+  const courseCount = courses.length
+  const totalAssignments = courses.reduce(
+    (total, course) => total + (course.courseWork?.length || 0),
+    0
+  )
+  
+  // Generate schedule weeks HTML
+  const scheduleWeeksHTML = smartResult.weeklySchedule.map(week => {
+    return `
+      <div class="schedule-week">
+        <h4>Week ${week.week}: ${formatDateShort(week.startDate)} - ${formatDateShort(week.endDate)}</h4>
+        <div class="schedule-days">
+          ${week.days.map(day => {
+            const dayName = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'][day.day]
+            return `
+              <div class="schedule-day">
+                <div class="day-header">${dayName} ${formatDateShort(day.date)}</div>
+                <div class="day-assignments">
+                  ${day.assignments.length === 0 ? 
+                    `<div class="empty-day">No assignments scheduled</div>` : 
+                    day.assignments.map(assignment => `
+                      <div class="schedule-assignment">
+                        <div class="assignment-icon">
+                          <span class="material-icons">${getWorkTypeIcon(assignment.type)}</span>
+                        </div>
+                        <div class="assignment-details">
+                          <div class="assignment-title">${assignment.title}</div>
+                          <div class="assignment-course">${assignment.courseName}</div>
+                          <div class="assignment-time">
+                            <span class="material-icons">schedule</span> ${assignment.estimatedHours.toFixed(1)} hrs
+                            ${assignment.dueDate ? 
+                              `<span class="due-date">Due: ${formatDateShort(assignment.dueDate)}</span>` : 
+                              ''}
+                          </div>
+                        </div>
+                      </div>
+                    `).join('')
+                  }
+                </div>
+              </div>
+            `;
+          }).join('')}
+        </div>
+      </div>
+    `;
+  }).join('');
+  
+  // Generate course breakdown HTML
+  const courseBreakdownHTML = smartResult.courseBreakdown.map(course => {
+    return `
+      <div class="course-breakdown-item">
+        <div class="course-name">${course.courseName}</div>
+        <div class="course-stats">
+          <div class="stat-item">
+            <span class="material-icons">assignment</span>
+            ${course.assignmentCount} assignments
+          </div>
+          <div class="stat-item">
+            <span class="material-icons">schedule</span>
+            ${course.totalHours.toFixed(1)} hours
+          </div>
+        </div>
+      </div>
+    `;
+  }).join('');
+
+  curriculumContainer.innerHTML = `
+    <div class="curriculum-header">
+      <h3>Your AI-Optimized Curriculum</h3>
+      <button id="back-to-courses" class="secondary-button">
+        <span class="material-icons">arrow_back</span>
+        Back to Courses
+      </button>
+    </div>
+    
+    <div class="curriculum-summary">
+      <div class="summary-card">
+        <div class="summary-icon"><span class="material-icons">school</span></div>
+        <div class="summary-count">${courseCount}</div>
+        <div class="summary-label">Courses</div>
+      </div>
+      <div class="summary-card">
+        <div class="summary-icon"><span class="material-icons">assignment</span></div>
+        <div class="summary-count">${totalAssignments}</div>
+        <div class="summary-label">Assignments</div>
+      </div>
+      <div class="summary-card">
+        <div class="summary-icon"><span class="material-icons">schedule</span></div>
+        <div class="summary-count">${Math.round(smartResult.totalEstimatedHours)}</div>
+        <div class="summary-label">Est. Hours</div>
+      </div>
+    </div>
+    
+    <div class="smart-curriculum-explanation">
+      <p>
+        <span class="material-icons">psychology</span>
+        This AI-optimized curriculum is personalized based on your past focus performance, 
+        assignment difficulty, and upcoming deadlines.
+      </p>
+    </div>
+    
+    <div class="schedule-container">
+      <h4>Personalized Study Schedule</h4>
+      ${scheduleWeeksHTML}
+    </div>
+    
+    <div class="course-breakdown">
+      <h4>Course Breakdown</h4>
+      <div class="course-breakdown-list">
+        ${courseBreakdownHTML}
+      </div>
+    </div>
+  `
+
+  // Display the curriculum container
+  curriculumContainer.style.display = 'block'
+
+  // Add event listener for back button
+  document.getElementById('back-to-courses')?.addEventListener('click', () => {
+    curriculumContainer.style.display = 'none'
+
+    if (coursesContainer) {
+      coursesContainer.style.display = 'grid'
+    }
+
+    updateGenerateButton()
+  })
 }
 
 function showGeneratedCurriculum(courses) {
@@ -1266,504 +2701,509 @@ function showGeneratedCurriculum(courses) {
         <div class="summary-icon"><span class="material-icons">assignment</span></div>
         <div class="summary-count">${totalAssignments}</div>
         <div class="summary-label">Assignments</div>
-      </div>
-      <div class="summary-card">
-        <div class="summary-icon"><span class="material-icons">schedule</span></div>
-        <div class="summary-count">${Math.ceil(totalAssignments * 1.5)}</div>
-        <div class="summary-label">Est. Hours</div>
-      </div>
-    </div>
-    
-    <div class="curriculum-timeline">
-      <h4>Study Timeline</h4>
-      <div class="timeline-container">
-        ${generateTimelineHTML(courses)}
-      </div>
-    </div>
-    
-    <div class="curriculum-courses">
-      <h4>Course Materials</h4>
-      ${courses
-        .map(
-          (course) => `
-        <div class="curriculum-course-card">
-          <h5>${course.name}</h5>
-          <div class="course-materials">
-            ${
-              course.courseWork && course.courseWork.length > 0
-                ? `<ul class="materials-list">
-                  ${course.courseWork
-                    .map(
-                      (work) => `
-                    <li class="material-item">
-                      <span class="material-icons">${getWorkTypeIcon(work.workType)}</span>
-                      <div class="material-details">
-                        <div class="material-title">${work.title}</div>
-                        ${work.dueDate ? `<div class="material-due">Due: ${formatDate(work.dueDate)}</div>` : ''}
-                      </div>
-                    </li>
-                  `
-                    )
-                    .join('')}
-                </ul>`
-                : '<p class="empty-message">No course materials available</p>'
-            }
-          </div>
         </div>
-      `
-        )
-        .join('')}
-    </div>
-  `
+     <div class="summary-card">
+       <div class="summary-icon"><span class="material-icons">schedule</span></div>
+       <div class="summary-count">${Math.ceil(totalAssignments * 1.5)}</div>
+       <div class="summary-label">Est. Hours</div>
+     </div>
+   </div>
+   
+   <div class="curriculum-timeline">
+     <h4>Study Timeline</h4>
+     <div class="timeline-container">
+       ${generateTimelineHTML(courses)}
+     </div>
+   </div>
+   
+   <div class="curriculum-courses">
+     <h4>Course Materials</h4>
+     ${courses
+       .map(
+         (course) => `
+       <div class="curriculum-course-card">
+         <h5>${course.name}</h5>
+         <div class="course-materials">
+           ${
+             course.courseWork && course.courseWork.length > 0
+               ? `<ul class="materials-list">
+                 ${course.courseWork
+                   .map(
+                     (work) => `
+                   <li class="material-item">
+                     <span class="material-icons">${getWorkTypeIcon(work.workType)}</span>
+                     <div class="material-details">
+                       <div class="material-title">${work.title}</div>
+                       ${work.dueDate ? `<div class="material-due">Due: ${formatDate(work.dueDate)}</div>` : ''}
+                     </div>
+                   </li>
+                 `
+                   )
+                   .join('')}
+               </ul>`
+               : '<p class="empty-message">No course materials available</p>'
+           }
+         </div>
+       </div>
+     `
+       )
+       .join('')}
+   </div>
+ `
 
-  // Display the curriculum container
-  curriculumContainer.style.display = 'block'
+ // Display the curriculum container
+ curriculumContainer.style.display = 'block'
 
-  // Add event listener for back button
-  document.getElementById('back-to-courses')?.addEventListener('click', () => {
-    curriculumContainer.style.display = 'none'
+ // Add event listener for back button
+ document.getElementById('back-to-courses')?.addEventListener('click', () => {
+   curriculumContainer.style.display = 'none'
 
-    if (coursesContainer) {
-      coursesContainer.style.display = 'grid'
-    }
+   if (coursesContainer) {
+     coursesContainer.style.display = 'grid'
+   }
 
-    updateGenerateButton()
-  })
+   updateGenerateButton()
+ })
 }
 
 function generateTimelineHTML(courses) {
-  // Get all assignments with due dates
-  const assignmentsWithDates = []
+ // Get all assignments with due dates
+ const assignmentsWithDates = []
 
-  courses.forEach((course) => {
-    if (course.courseWork && course.courseWork.length > 0) {
-      course.courseWork.forEach((work) => {
-        if (work.dueDate) {
-          assignmentsWithDates.push({
-            title: work.title,
-            courseName: course.name,
-            dueDate: createDateFromDueDate(work.dueDate),
-            workType: work.workType || 'ASSIGNMENT'
-          })
-        }
-      })
-    }
-  })
+ courses.forEach((course) => {
+   if (course.courseWork && course.courseWork.length > 0) {
+     course.courseWork.forEach((work) => {
+       if (work.dueDate) {
+         assignmentsWithDates.push({
+           title: work.title,
+           courseName: course.name,
+           dueDate: createDateFromDueDate(work.dueDate),
+           workType: work.workType || 'ASSIGNMENT'
+         })
+       }
+     })
+   }
+ })
 
-  // Sort assignments by due date
-  assignmentsWithDates.sort((a, b) => a.dueDate - b.dueDate)
+ // Sort assignments by due date
+ assignmentsWithDates.sort((a, b) => a.dueDate - b.dueDate)
 
-  // Group assignments by week
-  const today = new Date()
-  const weekMilliseconds = 7 * 24 * 60 * 60 * 1000
-  const weeks = []
+ // Group assignments by week
+ const today = new Date()
+ const weekMilliseconds = 7 * 24 * 60 * 60 * 1000
+ const weeks = []
 
-  // Create 4 weeks starting from today
-  for (let i = 0; i < 4; i++) {
-    const startDate = new Date(today.getTime() + i * weekMilliseconds)
-    const endDate = new Date(startDate.getTime() + weekMilliseconds - 1)
+ // Create 4 weeks starting from today
+ for (let i = 0; i < 4; i++) {
+   const startDate = new Date(today.getTime() + i * weekMilliseconds)
+   const endDate = new Date(startDate.getTime() + weekMilliseconds - 1)
 
-    weeks.push({
-      startDate,
-      endDate,
-      assignments: []
-    })
-  }
+   weeks.push({
+     startDate,
+     endDate,
+     assignments: []
+   })
+ }
 
-  // Assign each assignment to a week
-  assignmentsWithDates.forEach((assignment) => {
-    for (const week of weeks) {
-      if (assignment.dueDate >= week.startDate && assignment.dueDate <= week.endDate) {
-        week.assignments.push(assignment)
-        break
-      }
-    }
-  })
+ // Assign each assignment to a week
+ assignmentsWithDates.forEach((assignment) => {
+   for (const week of weeks) {
+     if (assignment.dueDate >= week.startDate && assignment.dueDate <= week.endDate) {
+       week.assignments.push(assignment)
+       break
+     }
+   }
+ })
 
-  // Generate HTML for timeline
-  return `
-    <div class="timeline">
-      ${weeks
-        .map(
-          (week, index) => `
-        <div class="timeline-week">
-          <div class="timeline-week-header">
-            <div class="week-number">Week ${index + 1}</div>
-            <div class="week-dates">${formatDateShort(week.startDate)} - ${formatDateShort(week.endDate)}</div>
-          </div>
-          <div class="timeline-assignments">
-            ${
-              week.assignments.length > 0
-                ? week.assignments
-                    .map(
-                      (assignment) => `
-                <div class="timeline-assignment">
-                  <div class="assignment-icon">
-                    <span class="material-icons">${getWorkTypeIcon(assignment.workType)}</span>
-                  </div>
-                  <div class="assignment-details">
-                    <div class="assignment-title">${assignment.title}</div>
-                    <div class="assignment-course">${assignment.courseName}</div>
-                    <div class="assignment-due">Due: ${formatDateShort(assignment.dueDate)}</div>
-                  </div>
-                </div>
-              `
-                    )
-                    .join('')
-                : '<div class="empty-week">No assignments due this week</div>'
-            }
-          </div>
-        </div>
-      `
-        )
-        .join('')}
-    </div>
-  `
+ // Generate HTML for timeline
+ return `
+   <div class="timeline">
+     ${weeks
+       .map(
+         (week, index) => `
+       <div class="timeline-week">
+         <div class="timeline-week-header">
+           <div class="week-number">Week ${index + 1}</div>
+           <div class="week-dates">${formatDateShort(week.startDate)} - ${formatDateShort(week.endDate)}</div>
+         </div>
+         <div class="timeline-assignments">
+           ${
+             week.assignments.length > 0
+               ? week.assignments
+                   .map(
+                     (assignment) => `
+               <div class="timeline-assignment">
+                 <div class="assignment-icon">
+                   <span class="material-icons">${getWorkTypeIcon(assignment.workType)}</span>
+                 </div>
+                 <div class="assignment-details">
+                   <div class="assignment-title">${assignment.title}</div>
+                   <div class="assignment-course">${assignment.courseName}</div>
+                   <div class="assignment-due">Due: ${formatDateShort(assignment.dueDate)}</div>
+                 </div>
+               </div>
+             `
+                   )
+                   .join('')
+               : '<div class="empty-week">No assignments due this week</div>'
+           }
+         </div>
+       </div>
+     `
+       )
+       .join('')}
+   </div>
+ `
 }
 
 function createDateFromDueDate(dueDate) {
-  return new Date(dueDate.year, (dueDate.month || 1) - 1, dueDate.day || 1)
+ return new Date(dueDate.year, (dueDate.month || 1) - 1, dueDate.day || 1)
 }
 
 function formatDateShort(date) {
-  return new Intl.DateTimeFormat('en-US', {
-    month: 'short',
-    day: 'numeric'
-  }).format(date)
+ return new Intl.DateTimeFormat('en-US', {
+   month: 'short',
+   day: 'numeric'
+ }).format(date)
 }
 
 function getWorkTypeIcon(workType) {
-  switch (workType) {
-    case 'ASSIGNMENT':
-      return 'assignment'
-    case 'SHORT_ANSWER_QUESTION':
-      return 'question_answer'
-    case 'MULTIPLE_CHOICE_QUESTION':
-      return 'quiz'
-    case 'QUIZ':
-      return 'quiz'
-    case 'TEST':
-      return 'fact_check'
-    case 'MATERIAL':
-      return 'book'
-    default:
-      return 'assignment'
-  }
+ switch (workType) {
+   case 'ASSIGNMENT':
+     return 'assignment'
+   case 'SHORT_ANSWER_QUESTION':
+     return 'question_answer'
+   case 'MULTIPLE_CHOICE_QUESTION':
+     return 'quiz'
+   case 'QUIZ':
+     return 'quiz'
+   case 'TEST':
+     return 'fact_check'
+   case 'MATERIAL':
+     return 'book'
+   default:
+     return 'assignment'
+ }
 }
 
 // Helper function to format date
 function formatDate(dateObj) {
-  if (!dateObj) return 'No due date'
+ if (!dateObj) return 'No due date'
 
-  try {
-    const date = createDateFromDueDate(dateObj)
-    return date.toLocaleDateString('en-US', {
-      weekday: 'short',
-      month: 'short',
-      day: 'numeric'
-    })
-  } catch (e) {
-    return 'Invalid date'
-  }
+ try {
+   const date = createDateFromDueDate(dateObj)
+   return date.toLocaleDateString('en-US', {
+     weekday: 'short',
+     month: 'short',
+     day: 'numeric'
+   })
+ } catch (e) {
+   return 'Invalid date'
+ }
 }
 
 // Updated viewCourseDetails function that properly displays a modal
 async function viewCourseDetails(courseId) {
-  try {
-    // Show loading indicator
-    const loadingIndicator = document.createElement('div')
-    loadingIndicator.className = 'loading-indicator'
-    loadingIndicator.innerHTML = `
-      <span class="material-icons rotating">sync</span>
-      <p>Loading course details...</p>
-    `
-    document.body.appendChild(loadingIndicator)
+ try {
+   // Show loading indicator
+   const loadingIndicator = document.createElement('div')
+   loadingIndicator.className = 'loading-indicator'
+   loadingIndicator.innerHTML = `
+     <span class="material-icons rotating">sync</span>
+     <p>Loading course details...</p>
+   `
+   document.body.appendChild(loadingIndicator)
 
-    // Fetch course work data
-    const courseWork = await classroomService.fetchCourseWork(courseId)
+   // Fetch course work data
+   const courseWork = await classroomService.fetchCourseWork(courseId)
 
-    // Remove loading indicator
-    document.body.removeChild(loadingIndicator)
+   // Remove loading indicator
+   document.body.removeChild(loadingIndicator)
 
-    // Get course name
-    const courseElement = document.querySelector(`.course-card[data-course-id="${courseId}"]`)
-    const courseName = courseElement?.querySelector('.course-name')?.textContent || 'Course Details'
+   // Get course name
+   const courseElement = document.querySelector(`.course-card[data-course-id="${courseId}"]`)
+   const courseName = courseElement?.querySelector('.course-name')?.textContent || 'Course Details'
 
-    // Create the modal
-    const modal = document.createElement('div')
-    modal.className = 'modal'
-    modal.id = `course-details-modal-${courseId}`
-    modal.innerHTML = `
-      <div class="modal-content">
-        <div class="modal-header">
-          <h2>${courseName}</h2>
-          <button class="close-button">&times;</button>
-        </div>
-        <div class="modal-body">
-          <h3>Assignments and Materials</h3>
-          <div class="coursework-list">
-            ${
-              courseWork.length === 0
-                ? '<p class="empty-state">No assignments or materials found for this course.</p>'
-                : courseWork
-                    .map(
-                      (item) => `
-                <div class="coursework-item">
-                  <div class="coursework-title">
-                    <span class="material-icons">${getWorkTypeIcon(item.workType)}</span>
-                    ${item.title}
-                  </div>
-                  ${
-                    item.description
-                      ? `<div class="coursework-description">${item.description}</div>`
-                      : ''
-                  }
-                  <div class="coursework-meta">
-                    <span class="coursework-type">${item.workType || 'Assignment'}</span>
-                    ${
-                      item.dueDate
-                        ? `<span class="coursework-due">Due: ${formatDate(item.dueDate)}</span>`
-                        : ''
-                    }
-                  </div>
-                </div>
-              `
-                    )
-                    .join('')
-            }
-          </div>
-        </div>
-      </div>
-    `
+   // Create the modal
+   const modal = document.createElement('div')
+   modal.className = 'modal'
+   modal.id = `course-details-modal-${courseId}`
+   modal.innerHTML = `
+     <div class="modal-content">
+       <div class="modal-header">
+         <h2>${courseName}</h2>
+         <button class="close-button">&times;</button>
+       </div>
+       <div class="modal-body">
+         <h3>Assignments and Materials</h3>
+         <div class="coursework-list">
+           ${
+             courseWork.length === 0
+               ? '<p class="empty-state">No assignments or materials found for this course.</p>'
+               : courseWork
+                   .map(
+                     (item) => `
+               <div class="coursework-item">
+                 <div class="coursework-title">
+                   <span class="material-icons">${getWorkTypeIcon(item.workType)}</span>
+                   ${item.title}
+                 </div>
+                 ${
+                   item.description
+                     ? `<div class="coursework-description">${item.description}</div>`
+                     : ''
+                 }
+                 <div class="coursework-meta">
+                   <span class="coursework-type">${item.workType || 'Assignment'}</span>
+                   ${
+                     item.dueDate
+                       ? `<span class="coursework-due">Due: ${formatDate(item.dueDate)}</span>`
+                       : ''
+                   }
+                 </div>
+               </div>
+             `
+                   )
+                   .join('')
+           }
+         </div>
+       </div>
+     </div>
+   `
 
-    // Add the modal to the body
-    document.body.appendChild(modal)
+   // Add the modal to the body
+   document.body.appendChild(modal)
 
-    // Force a reflow before adding the active class (for animation)
-    void modal.offsetWidth
+   // Force a reflow before adding the active class (for animation)
+   void modal.offsetWidth
 
-    // Show the modal with animation
-    setTimeout(() => {
-      modal.classList.add('active')
-    }, 10)
+   // Show the modal with animation
+   setTimeout(() => {
+     modal.classList.add('active')
+   }, 10)
 
-    // Add event listener to close button
-    modal.querySelector('.close-button').addEventListener('click', () => {
-      closeModal(modal)
-    })
+   // Add event listener to close button
+   modal.querySelector('.close-button').addEventListener('click', () => {
+     closeModal(modal)
+   })
 
-    // Close modal when clicking outside of content
-    modal.addEventListener('click', (event) => {
-      if (event.target === modal) {
-        closeModal(modal)
-      }
-    })
+   // Close modal when clicking outside of content
+   modal.addEventListener('click', (event) => {
+     if (event.target === modal) {
+       closeModal(modal)
+     }
+   })
 
-    // Add keyboard events for accessibility
-    document.addEventListener('keydown', function escKeyHandler(e) {
-      if (e.key === 'Escape') {
-        closeModal(modal)
-        document.removeEventListener('keydown', escKeyHandler)
-      }
-    })
-  } catch (error) {
-    console.error('Error loading course details:', error)
+   // Add keyboard events for accessibility
+   document.addEventListener('keydown', function escKeyHandler(e) {
+     if (e.key === 'Escape') {
+       closeModal(modal)
+       document.removeEventListener('keydown', escKeyHandler)
+     }
+   })
+ } catch (error) {
+   console.error('Error loading course details:', error)
 
-    // Show error in a clean modal
-    const errorModal = document.createElement('div')
-    errorModal.className = 'modal active'
-    errorModal.innerHTML = `
-      <div class="modal-content">
-        <div class="modal-header">
-          <h2>Error</h2>
-          <button class="close-button">&times;</button>
-        </div>
-        <div class="modal-body">
-          <p>Failed to load course details: ${error.message}</p>
-          <button class="primary-button" id="retry-course-details">
-            <span class="material-icons">refresh</span>
-            Retry
-          </button>
-        </div>
-      </div>
-    `
+   // Show error in a clean modal
+   const errorModal = document.createElement('div')
+   errorModal.className = 'modal active'
+   errorModal.innerHTML = `
+     <div class="modal-content">
+       <div class="modal-header">
+         <h2>Error</h2>
+         <button class="close-button">&times;</button>
+       </div>
+       <div class="modal-body">
+         <p>Failed to load course details: ${error.message}</p>
+         <button class="primary-button" id="retry-course-details">
+           <span class="material-icons">refresh</span>
+           Retry
+         </button>
+       </div>
+     </div>
+   `
 
-    document.body.appendChild(errorModal)
+   document.body.appendChild(errorModal)
 
-    // Set up event listeners for error modal
-    errorModal.querySelector('.close-button').addEventListener('click', () => {
-      closeModal(errorModal)
-    })
+   // Set up event listeners for error modal
+   errorModal.querySelector('.close-button').addEventListener('click', () => {
+     closeModal(errorModal)
+   })
 
-    errorModal.querySelector('#retry-course-details')?.addEventListener('click', () => {
-      closeModal(errorModal)
-      viewCourseDetails(courseId)
-    })
+   errorModal.querySelector('#retry-course-details')?.addEventListener('click', () => {
+     closeModal(errorModal)
+     viewCourseDetails(courseId)
+   })
 
-    errorModal.addEventListener('click', (event) => {
-      if (event.target === errorModal) {
-        closeModal(errorModal)
-      }
-    })
-  }
+   errorModal.addEventListener('click', (event) => {
+     if (event.target === errorModal) {
+       closeModal(errorModal)
+     }
+   })
+ }
 }
 
 // Helper function to close modal with animation
 function closeModal(modalElement) {
-  modalElement.classList.remove('active')
+ modalElement.classList.remove('active')
 
-  // Wait for animation to complete before removing from DOM
-  setTimeout(() => {
-    if (document.body.contains(modalElement)) {
-      document.body.removeChild(modalElement)
-    }
-  }, 300) // Match this to your CSS transition duration
+ // Wait for animation to complete before removing from DOM
+ setTimeout(() => {
+   if (document.body.contains(modalElement)) {
+     document.body.removeChild(modalElement)
+   }
+ }, 300) // Match this to your CSS transition duration
 }
 
 // For the chart (Placeholder)
 function createFocusChart() {
-  const chartElement = document.getElementById('focus-chart')
-  if (!chartElement) return
+ const chartElement = document.getElementById('focus-chart')
+ if (!chartElement) return
 
-  const chartHTML = `
-    <div class="chart-placeholder">
-      <svg width="100%" height="100%" viewBox="0 0 800 300">
-        <!-- Chart grid -->
-        <line x1="0" y1="250" x2="800" y2="250" stroke="rgba(255,255,255,0.1)" stroke-width="1"/>
-        <line x1="0" y1="200" x2="800" y2="200" stroke="rgba(255,255,255,0.1)" stroke-width="1"/>
-        <line x1="0" y1="150" x2="800" y2="150" stroke="rgba(255,255,255,0.1)" stroke-width="1"/>
-        <line x1="0" y1="100" x2="800" y2="100" stroke="rgba(255,255,255,0.1)" stroke-width="1"/>
-        <line x1="0" y1="50" x2="800" y2="50" stroke="rgba(255,255,255,0.1)" stroke-width="1"/>
-        
-        <!-- Chart data - Focus level line -->
-        <path d="M0,200 Q100,180 200,150 T400,100 T600,170 T800,120" fill="none" stroke="#3366ff" stroke-width="3"/>
-        
-        <!-- Chart data - Previous period line -->
-        <path d="M0,180 Q100,200 200,220 T400,150 T600,190 T800,170" fill="none" stroke="#ff9966" stroke-width="3" stroke-dasharray="5,5"/>
-        
-        <!-- X-axis labels -->
-        <text x="0" y="270" fill="#b0b7c3" font-size="12">Mon</text>
-        <text x="133" y="270" fill="#b0b7c3" font-size="12">Tue</text>
-        <text x="266" y="270" fill="#b0b7c3" font-size="12">Wed</text>
-        <text x="399" y="270" fill="#b0b7c3" font-size="12">Thu</text>
-        <text x="532" y="270" fill="#b0b7c3" font-size="12">Fri</text>
-        <text x="665" y="270" fill="#b0b7c3" font-size="12">Sat</text>
-        <text x="798" y="270" fill="#b0b7c3" font-size="12">Sun</text>
-        
-        <!-- Legend -->
-        <circle cx="650" cy="20" r="5" fill="#3366ff"/>
-        <text x="660" y="25" fill="#ffffff" font-size="12">This week</text>
-        <circle cx="740" cy="20" r="5" fill="#ff9966"/>
-        <text x="750" y="25" fill="#ffffff" font-size="12">Last week</text>
-      </svg>
-    </div>
-  `
+ const chartHTML = `
+   <div class="chart-placeholder">
+     <svg width="100%" height="100%" viewBox="0 0 800 300">
+       <!-- Chart grid -->
+       <line x1="0" y1="250" x2="800" y2="250" stroke="rgba(255,255,255,0.1)" stroke-width="1"/>
+       <line x1="0" y1="200" x2="800" y2="200" stroke="rgba(255,255,255,0.1)" stroke-width="1"/>
+       <line x1="0" y1="150" x2="800" y2="150" stroke="rgba(255,255,255,0.1)" stroke-width="1"/>
+       <line x1="0" y1="100" x2="800" y2="100" stroke="rgba(255,255,255,0.1)" stroke-width="1"/>
+       <line x1="0" y1="50" x2="800" y2="50" stroke="rgba(255,255,255,0.1)" stroke-width="1"/>
+       
+       <!-- Chart data - Focus level line -->
+       <path d="M0,200 Q100,180 200,150 T400,100 T600,170 T800,120" fill="none" stroke="#3366ff" stroke-width="3"/>
+       
+       <!-- Chart data - Previous period line -->
+       <path d="M0,180 Q100,200 200,220 T400,150 T600,190 T800,170" fill="none" stroke="#ff9966" stroke-width="3" stroke-dasharray="5,5"/>
+       
+       <!-- X-axis labels -->
+       <text x="0" y="270" fill="#b0b7c3" font-size="12">Mon</text>
+       <text x="133" y="270" fill="#b0b7c3" font-size="12">Tue</text>
+       <text x="266" y="270" fill="#b0b7c3" font-size="12">Wed</text>
+       <text x="399" y="270" fill="#b0b7c3" font-size="12">Thu</text>
+       <text x="532" y="270" fill="#b0b7c3" font-size="12">Fri</text>
+       <text x="665" y="270" fill="#b0b7c3" font-size="12">Sat</text>
+       <text x="798" y="270" fill="#b0b7c3" font-size="12">Sun</text>
+       
+       <!-- Legend -->
+       <circle cx="650" cy="20" r="5" fill="#3366ff"/>
+       <text x="660" y="25" fill="#ffffff" font-size="12">This week</text>
+       <circle cx="740" cy="20" r="5" fill="#ff9966"/>
+       <text x="750" y="25" fill="#ffffff" font-size="12">Last week</text>
+     </svg>
+   </div>
+ `
 
-  chartElement.innerHTML = chartHTML
+ chartElement.innerHTML = chartHTML
 }
 
 // Initialize Navigation
 function initNavigation() {
-  console.log('Initializing navigation...')
+ console.log('Initializing navigation...')
 
-  document.querySelectorAll('.nav-btn').forEach((button) => {
-    button.addEventListener('click', () => {
-      // Remove active class from all buttons and sections
-      document.querySelectorAll('.nav-btn').forEach((btn) => btn.classList.remove('active'))
-      document
-        .querySelectorAll('.content-section')
-        .forEach((section) => section.classList.remove('active'))
+ document.querySelectorAll('.nav-btn').forEach((button) => {
+   button.addEventListener('click', () => {
+     // Remove active class from all buttons and sections
+     document.querySelectorAll('.nav-btn').forEach((btn) => btn.classList.remove('active'))
+     document
+       .querySelectorAll('.content-section')
+       .forEach((section) => section.classList.remove('active'))
 
-      // Add active class to clicked button and corresponding section
-      button.classList.add('active')
-      const sectionId = button.dataset.section + '-section'
-      const section = document.getElementById(sectionId)
+     // Add active class to clicked button and corresponding section
+     button.classList.add('active')
+     const sectionId = button.dataset.section + '-section'
+     const section = document.getElementById(sectionId)
 
-      if (section) {
-        section.classList.add('active')
+     if (section) {
+       section.classList.add('active')
 
-        // If switching to curriculum section, load data
-        if (sectionId === 'curriculum-section' && authService.isLoggedIn()) {
-          loadCurriculumData()
-        }
-      } else {
-        console.error(`Section with ID "${sectionId}" not found`)
-      }
-    })
-  })
+       // If switching to curriculum section, load data
+       if (sectionId === 'curriculum-section' && authService.isLoggedIn()) {
+         loadCurriculumData()
+       }
+       
+       // If switching to focus section, initialize focus tracking
+       if (sectionId === 'focus-section') {
+         initializeFocusTracking()
+       }
+     } else {
+       console.error(`Section with ID "${sectionId}" not found`)
+     }
+   })
+ })
 }
 
 // Initialize Settings
 function initSettings() {
-  console.log('Initializing settings...')
+ console.log('Initializing settings...')
 
-  // Theme options
-  document.querySelectorAll('.theme-option').forEach((option) => {
-    option.addEventListener('click', () => {
-      const theme = option.dataset.theme
-      document.querySelectorAll('.theme-option').forEach((btn) => btn.classList.remove('active'))
-      option.classList.add('active')
-      themeManager.setTheme(theme)
-    })
-  })
+ // Theme options
+ document.querySelectorAll('.theme-option').forEach((option) => {
+   option.addEventListener('click', () => {
+     const theme = option.dataset.theme
+     document.querySelectorAll('.theme-option').forEach((btn) => btn.classList.remove('active'))
+     option.classList.add('active')
+     themeManager.setTheme(theme)
+   })
+ })
 
-  // Theme toggle button
-  document.getElementById('theme-toggle')?.addEventListener('click', () => {
-    themeManager.toggleTheme()
-  })
+ // Theme toggle button
+ document.getElementById('theme-toggle')?.addEventListener('click', () => {
+   themeManager.toggleTheme()
+ })
 
-  // Connect Classroom button - use auth service login
-  document.getElementById('connect-classroom')?.addEventListener('click', async () => {
-    console.log('Connecting to Google Classroom...')
-    try {
-      await authService.login()
-    } catch (error) {
-      console.error('Failed to connect to Google Classroom:', error)
-      alert(`Failed to connect to Google Classroom: ${error.message}`)
-    }
-  })
+ // Connect Classroom button - use auth service login
+ document.getElementById('connect-classroom')?.addEventListener('click', async () => {
+   console.log('Connecting to Google Classroom...')
+   try {
+     await authService.login()
+   } catch (error) {
+     console.error('Failed to connect to Google Classroom:', error)
+     alert(`Failed to connect to Google Classroom: ${error.message}`)
+   }
+ })
 }
 
 // Window control buttons
 function initWindowControls() {
-  console.log('Initializing window controls...')
+ console.log('Initializing window controls...')
 
-  // Set up window control buttons
-  if (ipcRenderer) {
-    document.getElementById('minimize')?.addEventListener('click', () => {
-      console.log('Minimize button clicked')
-      ipcRenderer.send('window-control', 'minimize')
-    })
+ // Set up window control buttons
+ if (ipcRenderer) {
+   document.getElementById('minimize')?.addEventListener('click', () => {
+     console.log('Minimize button clicked')
+     ipcRenderer.send('window-control', 'minimize')
+   })
 
-    document.getElementById('maximize')?.addEventListener('click', () => {
-      console.log('Maximize button clicked')
-      ipcRenderer.send('window-control', 'maximize')
-    })
+   document.getElementById('maximize')?.addEventListener('click', () => {
+     console.log('Maximize button clicked')
+     ipcRenderer.send('window-control', 'maximize')
+   })
 
-    document.getElementById('close')?.addEventListener('click', () => {
-      console.log('Close button clicked')
-      ipcRenderer.send('window-control', 'close')
-    })
-  } else {
-    console.warn('IPC Renderer not available - window controls will not function')
-  }
+   document.getElementById('close')?.addEventListener('click', () => {
+     console.log('Close button clicked')
+     ipcRenderer.send('window-control', 'close')
+   })
+ } else {
+   console.warn('IPC Renderer not available - window controls will not function')
+ }
 }
 
 // Call initialize when DOM is loaded
 document.addEventListener('DOMContentLoaded', () => {
-  console.log('DOM loaded, initializing application...')
+ console.log('DOM loaded, initializing application...')
 
-  // Debug logging for button detection
-  console.log('Login button:', document.getElementById('login-button'))
-  console.log('Curriculum login button:', document.getElementById('curriculum-login-button'))
+ // Debug logging for button detection
+ console.log('Login button:', document.getElementById('login-button'))
+ console.log('Curriculum login button:', document.getElementById('curriculum-login-button'))
 
-  console.log('All buttons on the page:')
-  document.querySelectorAll('button').forEach((button, index) => {
-    console.log(`Button ${index}:`, button, 'ID:', button.id)
-  })
+ console.log('All buttons on the page:')
+ document.querySelectorAll('button').forEach((button, index) => {
+   console.log(`Button ${index}:`, button, 'ID:', button.id)
+ })
 
-  // Initialize the application
-  initApp()
+ // Initialize the application
+ initApp()
 })
 
 // Export services for use in other modules

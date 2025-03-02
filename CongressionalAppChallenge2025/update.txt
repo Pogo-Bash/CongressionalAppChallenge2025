@@ -4,6 +4,8 @@ What you did in your latest push:
 
 What we need to do: 
 
+1. For main dashboard look, we need to: refine the layout, design data visualizations, add interactive elements, and implement responsive design. 
+
 Issues: 
 
 1. Getting Versions API not available in the Console.
