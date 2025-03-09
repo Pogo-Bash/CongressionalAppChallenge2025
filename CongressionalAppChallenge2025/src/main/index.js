@@ -4,6 +4,9 @@ import { electronApp, optimizer, is } from '@electron-toolkit/utils'
 import icon from '../../resources/icon.png?asset'
 import path from 'path'
 import * as dotenv from 'dotenv'
+import https from 'https'
+import http from 'http'
+import { URL } from 'url'
 
 const envPath = app.isPackaged
   ? path.join(process.resourcesPath, '.env')
@@ -135,12 +138,133 @@ ipcMain.handle('request-camera-permission', async () => {
   try {
     const win = BrowserWindow.getFocusedWindow()
     if (!win) return { success: false, error: 'No active window found' }
-    
+
     const status = await win.webContents.getMediaSourceId('camera')
     return { success: true, status }
   } catch (error) {
     return { success: false, error: error.message }
   }
+})
+
+// NEW ADDITION: Request proxy handler to bypass CORS issues
+// In main.js
+// In main.js
+ipcMain.handle('proxy-request', async (event, { url, options }) => {
+  console.log(`Proxying request to: ${url}`)
+
+  if (!url || typeof url !== 'string') {
+    console.error('Invalid URL provided to proxy-request')
+    return {
+      ok: false,
+      status: 400,
+      statusText: 'Bad Request: Invalid URL',
+      data: 'Invalid URL',
+      isJson: false
+    }
+  }
+
+  return new Promise((resolve) => {
+    try {
+      const parsedUrl = new URL(url)
+      const protocol = parsedUrl.protocol === 'https:' ? https : http
+
+      // Prepare headers - make a clean copy
+      const headers = {}
+      if (options && options.headers) {
+        Object.keys(options.headers).forEach((key) => {
+          // Filter out problematic headers
+          if (key.toLowerCase() !== 'host' && key.toLowerCase() !== 'connection') {
+            headers[key] = options.headers[key]
+          }
+        })
+      }
+
+      const requestOptions = {
+        method: options?.method || 'GET',
+        hostname: parsedUrl.hostname,
+        path: parsedUrl.pathname + parsedUrl.search,
+        headers: headers
+      }
+
+      console.log(
+        `Making ${requestOptions.method} request to ${parsedUrl.hostname}${parsedUrl.pathname}`
+      )
+
+      const req = protocol.request(requestOptions, (res) => {
+        let responseBody = ''
+
+        res.on('data', (chunk) => {
+          responseBody += chunk
+        })
+
+        res.on('end', () => {
+          console.log(`Proxy response status: ${res.statusCode}`)
+
+          // Create a serializable response object
+          const response = {
+            ok: res.statusCode >= 200 && res.statusCode < 300,
+            status: res.statusCode,
+            statusText: res.statusMessage || '',
+            url: url
+          }
+
+          // Add response data
+          try {
+            // Try to parse as JSON
+            const jsonData = JSON.parse(responseBody)
+            response.data = jsonData
+            response.isJson = true
+          } catch (e) {
+            // Store as text if not JSON
+            response.data = responseBody
+            response.isJson = false
+          }
+
+          resolve(response)
+        })
+      })
+
+      req.on('error', (error) => {
+        console.error(`Proxy request error: ${error.message}`)
+        resolve({
+          ok: false,
+          status: 500,
+          statusText: error.message || 'Request failed',
+          data: error.message || 'Unknown error',
+          isJson: false
+        })
+      })
+
+      // We don't want to reject the promise as it causes IPC issues
+      req.on('timeout', () => {
+        console.error('Proxy request timed out')
+        req.destroy()
+        resolve({
+          ok: false,
+          status: 504,
+          statusText: 'Gateway Timeout',
+          data: 'Request timed out',
+          isJson: false
+        })
+      })
+
+      // Add body if provided
+      if (options && options.body) {
+        req.write(options.body)
+      }
+
+      req.end()
+    } catch (error) {
+      console.error(`Error in proxy request: ${error.message}`)
+      resolve({
+        ok: false,
+        status: 500,
+        statusText: error.message || 'Error in proxy request',
+        data: error.message || 'Unknown error',
+        isJson: false
+      })
+    }
+  })
 })
 
 process.env.SECURE_ENV = JSON.stringify({
