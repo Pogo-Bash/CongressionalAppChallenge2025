@@ -66,6 +66,68 @@ googleProvider.addScope('https://www.googleapis.com/auth/classroom.profile.email
 // Focus Sessions Management
 let focusSessionsCache = []
 
+// TensorFlow Model
+
+let focusTrackingInitialized = false;
+let tensorflowModel = null;
+let faceDetector = null;
+
+async function initializeTensorFlow() {
+  if (focusTrackingInitialized) return true;
+  
+  try {
+    console.log('Initializing TensorFlow.js...');
+    
+    // Import TensorFlow.js dynamically
+    const tf = await import('@tensorflow/tfjs');
+    
+    // Set backend based on platform
+    const backendNames = tf.engine().backendNames();
+    console.log('Available backends:', backendNames);
+    
+    // Try to use WebGL if available (much faster)
+    if (backendNames.includes('webgl')) {
+      try {
+        console.log('Setting WebGL backend...');
+        await tf.setBackend('webgl');
+        // Optimize WebGL for memory
+        tf.env().set('WEBGL_FORCE_F16_TEXTURES', true);
+        tf.env().set('WEBGL_CPU_FORWARD', true);
+        console.log('Using WebGL backend');
+      } catch (error) {
+        console.warn('WebGL backend failed, falling back to CPU:', error);
+        await tf.setBackend('cpu');
+      }
+    } else {
+      await tf.setBackend('cpu');
+      console.log('Using CPU backend');
+    }
+    
+    // Import face-detection model dynamically
+    const faceDetection = await import('@tensorflow-models/face-detection');
+    
+    // Load face detection model (BlazeFace is lighter/faster)
+    const modelConfig = {
+      modelType: 'short',
+      runtime: 'tfjs',
+      maxFaces: 1
+    };
+    
+    console.log('Loading face detection model...');
+    faceDetector = await faceDetection.createDetector(
+      faceDetection.SupportedModels.BlazeFace,
+      modelConfig
+    );
+    
+    console.log('TensorFlow and face detection initialized successfully');
+    focusTrackingInitialized = true;
+    return true;
+  } catch (error) {
+    console.error('Failed to initialize TensorFlow:', error);
+    throw error;
+  }
+}
+
 // Load focus sessions from local storage
 function loadFocusSessions() {
   try {
@@ -845,16 +907,17 @@ const classroomService = {
 class FocusTracker {
   constructor() {
     this.isTracking = false;
-    this.faceDetectionModel = null;
+    this.focusData = this.resetFocusData();
     this.videoElement = null;
     this.canvasElement = null;
     this.canvasContext = null;
     this.trackingInterval = null;
     this.timerInterval = null;
     this.blinkThreshold = 0.3;
-    this.focusData = this.resetFocusData();
-    this.domElements = {};
     this.modelLoaded = false;
+    this.domElements = {};
+    this.savedSessions = [];
+    this.loadSavedSessions();
   }
   
   resetFocusData() {
@@ -871,6 +934,31 @@ class FocusTracker {
     };
   }
   
+  loadSavedSessions() {
+    try {
+      const savedData = localStorage.getItem('focusSessions');
+      if (savedData) {
+        this.savedSessions = JSON.parse(savedData);
+        console.log(`Loaded ${this.savedSessions.length} focus sessions from storage`);
+      }
+    } catch (error) {
+      console.error('Error loading saved sessions:', error);
+      this.savedSessions = [];
+    }
+  }
+  
+  saveSessions() {
+    try {
+      localStorage.setItem('focusSessions', JSON.stringify(this.savedSessions));
+      console.log(`Saved ${this.savedSessions.length} focus sessions to storage`);
+      
+      // Update dashboard if available
+      updateDashboardWithFocusData(this.savedSessions);
+    } catch (error) {
+      console.error('Error saving sessions:', error);
+    }
+  }
+  
   async initialize(containerElement) {
     if (!containerElement) {
       console.error('No container element provided for focus tracker');
@@ -884,20 +972,33 @@ class FocusTracker {
       // Setup canvas for visualization
       this.setupCanvas();
       
-      // Load TensorFlow and face detection model
-      await this.loadModels();
+      // Show loading state
+      this.showLoadingState(true);
       
-      // Set up event listeners
+      // Initialize TensorFlow
+      try {
+        await initializeTensorFlow();
+        this.modelLoaded = true;
+      } catch (error) {
+        console.error('Failed to initialize TensorFlow:', error);
+        this.showLoadingState(false, error.message);
+        return false;
+      }
+      
+      // Setup event listeners
       this.setupEventListeners();
       
-      // Update UI to show model loaded
-      this.setInitializationStatus(true);
+      // Hide loading state and show main content
+      this.showLoadingState(false);
+      
+      // Display previous sessions
+      this.updateSessionsList();
       
       return true;
     } catch (error) {
       console.error('Error initializing focus tracker:', error);
       this.showError(`Failed to initialize focus tracking: ${error.message}`);
-      this.setInitializationStatus(false, error.message);
+      this.showLoadingState(false, error.message);
       return false;
     }
   }
@@ -973,7 +1074,7 @@ class FocusTracker {
           <div class="focus-history">
             <h3>Recent Focus Sessions</h3>
             <div id="focus-sessions-list" class="sessions-list">
-            <div class="empty-state">No recent focus sessions found</div>
+              <div class="empty-state">No recent focus sessions found</div>
             </div>
             
             <div class="focus-history-controls">
@@ -1021,48 +1122,20 @@ class FocusTracker {
     }
   }
   
-  async loadModels() {
-    try {
-      // Load TensorFlow.js if not already loaded
-      if (!window.tf) {
-        await import('@tensorflow/tfjs');
-        console.log('TensorFlow.js loaded');
-      }
-      
-      // Load face detection model
-      const faceDetection = await import('@tensorflow-models/face-detection');
-      
-      // Create detector with MediaPipe FaceDetector
-      this.faceDetectionModel = await faceDetection.createDetector(
-        faceDetection.SupportedModels.MediaPipeFaceDetector,
-        {
-          runtime: 'tfjs',
-          maxFaces: 1,
-          modelType: 'short'
-        }
-      );
-      
-      console.log('Face detection model loaded');
-      this.modelLoaded = true;
-      return true;
-    } catch (error) {
-      console.error('Error loading models:', error);
-      this.modelLoaded = false;
-      throw error;
+  showLoadingState(isLoading, errorMessage = '') {
+    if (!this.domElements.modelLoading || !this.domElements.modelError || !this.domElements.mainContent) {
+      return;
     }
-  }
-  
-  setInitializationStatus(success, errorMessage = '') {
-    if (success) {
-      this.domElements.modelLoading.style.display = 'none';
+    
+    if (isLoading) {
+      this.domElements.modelLoading.style.display = 'flex';
       this.domElements.modelError.style.display = 'none';
-      this.domElements.mainContent.style.display = 'block';
-      
-      // Load and display previous sessions
-      this.loadAndDisplaySessions();
-    } else {
+      this.domElements.mainContent.style.display = 'none';
+    } else if (errorMessage) {
       this.domElements.modelLoading.style.display = 'none';
       this.domElements.modelError.style.display = 'block';
+      this.domElements.mainContent.style.display = 'none';
+      
       this.domElements.modelError.innerHTML = `
         <p>Error initializing focus tracking: ${errorMessage}</p>
         <button id="retry-model-loading" class="primary-button">
@@ -1071,49 +1144,47 @@ class FocusTracker {
         </button>
       `;
       
-      document.getElementById('retry-model-loading')?.addEventListener('click', async () => {
-        this.domElements.modelError.style.display = 'none';
-        this.domElements.modelLoading.style.display = 'flex';
-        try {
-          await this.loadModels();
-          this.setInitializationStatus(true);
-        } catch (error) {
-          this.setInitializationStatus(false, error.message);
-        }
+      document.getElementById('retry-model-loading')?.addEventListener('click', () => {
+        this.showLoadingState(true);
+        initializeTensorFlow().then(() => {
+          this.modelLoaded = true;
+          this.showLoadingState(false);
+        }).catch(error => {
+          this.showLoadingState(false, error.message);
+        });
       });
+    } else {
+      this.domElements.modelLoading.style.display = 'none';
+      this.domElements.modelError.style.display = 'none';
+      this.domElements.mainContent.style.display = 'block';
     }
   }
   
   setupEventListeners() {
     // Start tracking button
-    this.domElements.startButton.addEventListener('click', () => this.startTracking());
+    this.domElements.startButton?.addEventListener('click', () => this.startTracking());
     
     // Stop tracking button
-    this.domElements.stopButton.addEventListener('click', () => this.stopTracking());
+    this.domElements.stopButton?.addEventListener('click', () => this.stopTracking());
     
     // Export sessions button
-    this.domElements.exportButton.addEventListener('click', () => exportFocusSessions());
+    this.domElements.exportButton?.addEventListener('click', () => this.exportSessions());
     
     // Import sessions input
-    this.domElements.importInput.addEventListener('change', (e) => importFocusSessions(e));
+    this.domElements.importInput?.addEventListener('change', (e) => this.importSessions(e));
   }
   
-  loadAndDisplaySessions() {
-    const sessions = loadFocusSessions();
-    this.updateSessionsList(sessions);
-  }
-  
-  updateSessionsList(sessions) {
+  updateSessionsList() {
     const sessionsList = this.domElements.sessionsList;
     if (!sessionsList) return;
     
-    if (sessions.length === 0) {
+    if (this.savedSessions.length === 0) {
       sessionsList.innerHTML = `<div class="empty-state">No recent focus sessions found</div>`;
       return;
     }
     
     // Sort sessions by date, newest first
-    const sortedSessions = [...sessions].sort((a, b) => 
+    const sortedSessions = [...this.savedSessions].sort((a, b) => 
       new Date(b.startTime || b.createdAt || 0) - new Date(a.startTime || a.createdAt || 0)
     );
     
@@ -1122,7 +1193,7 @@ class FocusTracker {
     
     sessionsList.innerHTML = recentSessions.map(session => {
       const startTime = new Date(session.startTime);
-      const endTime = new Date(session.endTime);
+      const endTime = session.endTime ? new Date(session.endTime) : new Date();
       const duration = Math.floor((endTime - startTime) / 1000 / 60); // Duration in minutes
       const formattedDate = startTime.toLocaleDateString();
       const formattedTime = startTime.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
@@ -1144,16 +1215,7 @@ class FocusTracker {
     
     try {
       // Request camera access
-      const stream = await navigator.mediaDevices.getUserMedia({
-        video: {
-          facingMode: 'user',
-          width: { ideal: 640 },
-          height: { ideal: 480 }
-        }
-      });
-      
-      // Connect stream to video element
-      this.videoElement.srcObject = stream;
+      await this.initializeCamera();
       
       // Reset focus data
       this.focusData = this.resetFocusData();
@@ -1162,11 +1224,13 @@ class FocusTracker {
       // Update UI
       this.domElements.startButton.disabled = true;
       this.domElements.stopButton.disabled = false;
-      this.domElements.faceIndicator.classList.remove('face-detected', 'no-face-detected');
+      if (this.domElements.faceIndicator) {
+        this.domElements.faceIndicator.classList.remove('face-detected', 'no-face-detected');
+      }
       this.isTracking = true;
       
       // Start tracking loop
-      this.trackingInterval = setInterval(() => this.trackFocus(), 100);
+      this.trackingInterval = setInterval(() => this.trackFocus(), 200);
       
       // Start session timer
       this.timerInterval = setInterval(() => this.updateSessionTime(), 1000);
@@ -1178,15 +1242,45 @@ class FocusTracker {
     }
   }
   
-  stopTracking() {
-    if (!this.isTracking) return;
-    
-    // Stop video stream
+  async initializeCamera() {
+    try {
+      const constraints = {
+        video: {
+          facingMode: 'user',
+          width: { ideal: 640 },
+          height: { ideal: 480 }
+        }
+      };
+      
+      const stream = await navigator.mediaDevices.getUserMedia(constraints);
+      this.videoElement.srcObject = stream;
+      
+      // Wait for video to be ready
+      return new Promise((resolve) => {
+        this.videoElement.onloadedmetadata = () => {
+          this.videoElement.play();
+          resolve(true);
+        };
+      });
+    } catch (error) {
+      console.error('Failed to initialize camera:', error);
+      throw error;
+    }
+  }
+  
+  stopCamera() {
     if (this.videoElement && this.videoElement.srcObject) {
       const tracks = this.videoElement.srcObject.getTracks();
       tracks.forEach(track => track.stop());
       this.videoElement.srcObject = null;
     }
+  }
+  
+  stopTracking() {
+    if (!this.isTracking) return;
+    
+    // Stop video stream
+    this.stopCamera();
     
     // Stop intervals
     clearInterval(this.trackingInterval);
@@ -1218,31 +1312,72 @@ class FocusTracker {
   }
   
   saveSession() {
-    // Save to local storage
-    saveNewFocusSession(this.focusData);
+    // Only save sessions that lasted at least 30 seconds
+    if (this.focusData.sessionDuration >= 30) {
+      const sessionToSave = {
+        ...this.focusData,
+        id: Date.now(),
+        createdAt: new Date().toISOString()
+      };
+      
+      this.savedSessions.push(sessionToSave);
+      
+      // Keep only the 50 most recent sessions
+      if (this.savedSessions.length > 50) {
+        this.savedSessions = this.savedSessions
+          .sort((a, b) => new Date(b.createdAt) - new Date(a.createdAt))
+          .slice(0, 50);
+      }
+      
+      // Save to localStorage
+      this.saveSessions();
+    }
     
     // Update session list
-    this.loadAndDisplaySessions();
+    this.updateSessionsList();
   }
   
   async trackFocus() {
-    if (!this.isTracking || !this.modelLoaded || !this.faceDetectionModel) return;
+    if (!this.isTracking || !this.modelLoaded || !faceDetector) return;
     
     try {
       // Detect faces
-      const faces = await this.faceDetectionModel.estimateFaces(this.videoElement);
+      if (!this.videoElement || this.videoElement.readyState < 2) {
+        return;
+      }
       
-      // Update face detection status
-      const faceDetected = faces.length > 0;
+      const faces = await faceDetector.estimateFaces(this.videoElement);
+      const faceDetected = faces && faces.length > 0;
+      
+      // Update face detection indicator
       this.updateFaceIndicator(faceDetected);
       
       if (faceDetected) {
-        // Process face for blink detection and focus metrics
-        const face = faces[0];
-        this.processFaceData(face);
+        // Draw face on canvas
+        this.drawFaceLandmarks(faces[0]);
         
-        // Draw face landmarks for visualization
-        this.drawFaceLandmarks(face);
+        // Record face detection
+        this.focusData.faceDetections.push({
+          timestamp: Date.now()
+        });
+        
+        // Estimate eye openness and blink detection
+        const blinkData = this.estimateBlinkFromFace(faces[0]);
+        
+        // Record blink event if blinking
+        if (blinkData.isBlinking) {
+          this.focusData.blinkEvents.push({
+            timestamp: Date.now(),
+            eyeOpenness: blinkData.eyeOpenness
+          });
+        }
+        
+        // Calculate blink rate (blinks per minute)
+        const sessionDurationMinutes = (Date.now() - this.focusData.startTime) / 60000;
+        this.focusData.blinkRate = this.focusData.blinkEvents.length / Math.max(sessionDurationMinutes, 0.1);
+        
+        // Update attention score based on blink rate
+        this.updateAttentionScore(blinkData.eyeOpenness, blinkData.isBlinking);
       } else {
         // No face detected - record distraction
         this.recordDistraction();
@@ -1255,77 +1390,61 @@ class FocusTracker {
       
       // Update stats display
       this.updateStats();
+      
     } catch (error) {
       console.error('Error during focus tracking:', error);
     }
   }
   
-  processFaceData(face) {
-    // Record face detection
-    this.focusData.faceDetections.push({
-      timestamp: Date.now(),
-      boundingBox: face.box
-    });
+  estimateBlinkFromFace(face) {
+    // Default values
+    let isBlinking = false;
+    let eyeOpenness = 1.0;
     
-    // Using eye aspect ratio (EAR) to detect blinks
-    const leftEye = this.extractEyeKeypoints(face, 'leftEye');
-    const rightEye = this.extractEyeKeypoints(face, 'rightEye');
+    // BlazeFace may not provide detailed eye landmarks
+    // We'll approximate using the face topology and probability
     
-    if (leftEye.length > 0 && rightEye.length > 0) {
-      const leftEAR = this.calculateEAR(leftEye);
-      const rightEAR = this.calculateEAR(rightEye);
-      const avgEAR = (leftEAR + rightEAR) / 2;
-      
-      // Check for blink
-      const isBlinking = avgEAR < this.blinkThreshold;
-      
-      // Record blink event
-      if (isBlinking) {
-        this.focusData.blinkEvents.push({
-          timestamp: Date.now(),
-          eyeOpenness: avgEAR
-        });
+    // If probability is low, consider it a blink (face not fully visible/looking away)
+    if (face.box && face.box.probability) {
+      // Low probability may indicate looking away or eyes closed
+      if (face.box.probability < 0.85) {
+        isBlinking = true;
+        eyeOpenness = face.box.probability * 0.5;
       }
-      
-      // Update blink rate (blinks per minute)
-      const sessionDurationMinutes = (Date.now() - this.focusData.startTime) / 60000;
-      this.focusData.blinkRate = this.focusData.blinkEvents.length / Math.max(sessionDurationMinutes, 0.1);
-      
-      // Update attention score based on blink rate
-      this.updateAttentionScore(avgEAR, isBlinking);
     }
+    
+    return { isBlinking, eyeOpenness };
   }
   
-  extractEyeKeypoints(face, eyeType) {
-    // Extract eye keypoints from face detection result
-    if (!face.keypoints) return [];
+  drawFaceLandmarks(face) {
+    if (!this.canvasContext || !face) return;
     
-    // Face detection model typically provides keypoints with names
-    return face.keypoints.filter(keypoint => 
-      keypoint.name && keypoint.name.includes(eyeType)
-    );
-  }
-  
-  calculateEAR(eyePoints) {
-    if (eyePoints.length < 4) return 1.0; // Default to eyes open if insufficient points
+    // Clear canvas
+    this.canvasContext.clearRect(0, 0, this.canvasElement.width, this.canvasElement.height);
     
-    // Simplified EAR calculation - vertical distance / horizontal distance
-    let minY = Infinity, maxY = -Infinity;
-    let minX = Infinity, maxX = -Infinity;
+    // Draw bounding box if available
+    if (face.box) {
+      const box = face.box;
+      this.canvasContext.strokeStyle = '#00ff00';
+      this.canvasContext.lineWidth = 2;
+      
+      // Check if the box uses xMin,yMin format or x,y,width,height format
+      if ('xMin' in box && 'yMin' in box && 'width' in box && 'height' in box) {
+        this.canvasContext.strokeRect(box.xMin, box.yMin, box.width, box.height);
+      } else if ('x' in box && 'y' in box && 'width' in box && 'height' in box) {
+        this.canvasContext.strokeRect(box.x, box.y, box.width, box.height);
+      }
+    }
     
-    eyePoints.forEach(point => {
-      minY = Math.min(minY, point.y);
-      maxY = Math.max(maxY, point.y);
-      minX = Math.min(minX, point.x);
-      maxX = Math.max(maxX, point.x);
-    });
-    
-    const verticalDist = maxY - minY;
-    const horizontalDist = maxX - minX;
-    
-    if (horizontalDist === 0) return 1.0;
-    
-    return verticalDist / horizontalDist;
+    // Draw keypoints if available
+    if (face.keypoints && face.keypoints.length > 0) {
+      face.keypoints.forEach(keypoint => {
+        this.canvasContext.fillStyle = '#00ffff';
+        this.canvasContext.beginPath();
+        this.canvasContext.arc(keypoint.x, keypoint.y, 3, 0, 2 * Math.PI);
+        this.canvasContext.fill();
+      });
+    }
   }
   
   updateAttentionScore(eyeOpenness, isBlinking) {
@@ -1334,14 +1453,14 @@ class FocusTracker {
     
     // Factors affecting attention score
     if (!isBlinking) {
-      // Normal eye state - gradually increase score
-      if (this.focusData.blinkRate >= 10 && this.focusData.blinkRate <= 30) {
-        // Healthy blink rate (10-30 blinks per minute)
+      // Normal eye state - gradually increase score if in healthy blink rate range
+      if (this.focusData.blinkRate >= 10 && this.focusData.blinkRate <= 25) {
+        // Healthy blink rate (10-25 blinks per minute)
         score = Math.min(score + 0.2, 100);
       } else if (this.focusData.blinkRate < 10) {
         // Too few blinks - potential staring, slight decrease
         score = Math.max(score - 0.1, 40);
-      } else if (this.focusData.blinkRate > 30) {
+      } else if (this.focusData.blinkRate > 25) {
         // Too many blinks - potential fatigue
         score = Math.max(score - 0.2, 20);
       }
@@ -1358,14 +1477,13 @@ class FocusTracker {
   }
   
   recordDistraction() {
-    // Only count as distraction if the previous state had a face
-    const previousDetections = this.focusData.faceDetections;
-    if (previousDetections.length > 0) {
-      const lastDetection = previousDetections[previousDetections.length - 1];
+    // Only count as distraction if we previously detected a face
+    if (this.focusData.faceDetections.length > 0) {
+      const lastDetection = this.focusData.faceDetections[this.focusData.faceDetections.length - 1];
       const timeSinceLastDetection = Date.now() - lastDetection.timestamp;
       
-      // If face was detected recently (within 1 second) but now gone, count as distraction
-      if (timeSinceLastDetection < 1000) {
+      // If face was detected recently (within 2 seconds) but now gone, count as distraction
+      if (timeSinceLastDetection < 2000) {
         this.focusData.distractions++;
         
         // Reduce attention score for distraction
@@ -1380,39 +1498,6 @@ class FocusTracker {
     }
   }
   
-  drawFaceLandmarks(face) {
-    if (!this.canvasContext || !face) return;
-    
-    // Clear canvas
-    this.canvasContext.clearRect(0, 0, this.canvasElement.width, this.canvasElement.height);
-    
-    // Draw bounding box
-    const box = face.box;
-    this.canvasContext.strokeStyle = '#00ff00';
-    this.canvasContext.lineWidth = 2;
-    this.canvasContext.strokeRect(box.xMin, box.yMin, box.width, box.height);
-    
-    // Draw keypoints
-    if (face.keypoints) {
-      face.keypoints.forEach(keypoint => {
-        // Different colors for different facial features
-        if (keypoint.name.includes('eye')) {
-          this.canvasContext.fillStyle = '#00ffff';
-        } else if (keypoint.name.includes('nose')) {
-          this.canvasContext.fillStyle = '#ffff00';
-        } else if (keypoint.name.includes('mouth')) {
-          this.canvasContext.fillStyle = '#ff00ff';
-        } else {
-          this.canvasContext.fillStyle = '#ff0000';
-        }
-        
-        this.canvasContext.beginPath();
-        this.canvasContext.arc(keypoint.x, keypoint.y, 3, 0, 2 * Math.PI);
-        this.canvasContext.fill();
-      });
-    }
-  }
-  
   updateFaceIndicator(faceDetected) {
     if (!this.domElements.faceIndicator) return;
     
@@ -1422,20 +1507,110 @@ class FocusTracker {
   
   updateStats() {
     // Update focus score
-    this.domElements.focusScore.textContent = Math.round(this.focusData.attentionScore);
+    if (this.domElements.focusScore) {
+      this.domElements.focusScore.textContent = Math.round(this.focusData.attentionScore);
+    }
     
     // Update blink rate
-    this.domElements.blinkRate.textContent = Math.round(this.focusData.blinkRate);
+    if (this.domElements.blinkRate) {
+      this.domElements.blinkRate.textContent = Math.round(this.focusData.blinkRate);
+    }
     
     // Update distraction count
-    this.domElements.distractionCount.textContent = this.focusData.distractions;
+    if (this.domElements.distractionCount) {
+      this.domElements.distractionCount.textContent = this.focusData.distractions;
+    }
   }
   
   updateSessionTime() {
+    if (!this.domElements.sessionTime) return;
+    
     const sessionDurationSeconds = Math.floor((Date.now() - this.focusData.startTime) / 1000);
     const minutes = Math.floor(sessionDurationSeconds / 60).toString().padStart(2, '0');
     const seconds = (sessionDurationSeconds % 60).toString().padStart(2, '0');
     this.domElements.sessionTime.textContent = `${minutes}:${seconds}`;
+  }
+  
+  exportSessions() {
+    if (this.savedSessions.length === 0) {
+      this.showError('No focus sessions to export');
+      return;
+    }
+    
+    const dataStr = JSON.stringify(this.savedSessions, null, 2);
+    const dataUri = 'data:application/json;charset=utf-8,' + encodeURIComponent(dataStr);
+    
+    const exportFileDefaultName = `focus-sessions-${new Date().toISOString().slice(0, 10)}.json`;
+    
+    const linkElement = document.createElement('a');
+    linkElement.setAttribute('href', dataUri);
+    linkElement.setAttribute('download', exportFileDefaultName);
+    linkElement.style.display = 'none';
+    document.body.appendChild(linkElement); // Required for Firefox
+    
+    linkElement.click();
+    
+    document.body.removeChild(linkElement);
+  }
+  
+  importSessions(fileInputEvent) {
+    try {
+      const file = fileInputEvent.target.files[0];
+      if (!file) {
+        return;
+      }
+      
+      const reader = new FileReader();
+      
+      reader.onload = (event) => {
+        try {
+          const importedSessions = JSON.parse(event.target.result);
+          
+          if (!Array.isArray(importedSessions)) {
+            throw new Error('Invalid format: imported data is not an array');
+          }
+          
+          const validSessions = importedSessions.filter(session => {
+            return session.startTime && (session.endTime || session.sessionDuration) && 
+                  typeof session.attentionScore === 'number';
+          });
+          
+          if (validSessions.length === 0) {
+            throw new Error('No valid focus sessions found in the imported file');
+          }
+          
+          // Merge with existing sessions, avoiding duplicates by ID
+          const existingIds = new Set(this.savedSessions.map(s => s.id));
+          
+          this.savedSessions = [
+            ...this.savedSessions,
+            ...validSessions.filter(s => !existingIds.has(s.id))
+          ];
+          
+          // Sort and limit to 50 sessions
+          this.savedSessions = this.savedSessions
+            .sort((a, b) => new Date(b.startTime) - new Date(a.startTime))
+            .slice(0, 50);
+          
+          this.saveSessions();
+          this.updateSessionsList();
+          
+          this.showNotification(`Successfully imported ${validSessions.length} focus sessions`);
+        } catch (error) {
+          console.error('Error parsing imported file:', error);
+          this.showError(`Error importing focus sessions: ${error.message}`);
+        }
+      };
+      
+      reader.onerror = () => {
+        this.showError('Error reading the file');
+      };
+      
+      reader.readAsText(file);
+    } catch (error) {
+      console.error('Error importing focus sessions:', error);
+      this.showError(`Error importing focus sessions: ${error.message}`);
+    }
   }
   
   showError(message) {
@@ -1448,12 +1623,382 @@ class FocusTracker {
       this.domElements.errorContainer.style.display = 'none';
     }, 5000);
   }
+  
+  showNotification(message) {
+    const notification = document.createElement('div');
+    notification.className = 'notification';
+    notification.textContent = message;
+    
+    document.body.appendChild(notification);
+    
+    setTimeout(() => {
+      notification.classList.add('show');
+    }, 10);
+    
+    setTimeout(() => {
+      notification.classList.remove('show');
+      setTimeout(() => {
+        document.body.removeChild(notification);
+      }, 300);
+    }, 3000);
+  }
 }
 
-// Initialize focus tracker instance
-let focusTracker = null;
 
-// Function to initialize focus tracking components
+function updateDashboardWithFocusData(sessions) {
+  if (!sessions || sessions.length === 0) return;
+  
+  // Calculate total study time (in hours)
+  const totalStudyTimeHours = sessions.reduce((total, session) => {
+    const duration = session.sessionDuration || 
+      ((session.endTime - session.startTime) / 1000 / 3600);
+    return total + duration;
+  }, 0);
+  
+  // Calculate average focus score
+  const avgFocusScore = sessions.reduce((total, session) => 
+    total + session.attentionScore, 0) / sessions.length;
+  
+  // Find completed modules (sessions with score > 70)
+  const completedModules = sessions.filter(session => session.attentionScore > 70).length;
+  
+  // Update dashboard UI if elements exist
+  const studyTimeElement = document.querySelector('.stat-card:nth-child(1) .stat-value');
+  const avgFocusElement = document.querySelector('.stat-card:nth-child(2) .stat-value');
+  const modulesElement = document.querySelector('.stat-card:nth-child(3) .stat-value');
+  
+  if (studyTimeElement) {
+    studyTimeElement.textContent = `${totalStudyTimeHours.toFixed(1)}h`;
+  }
+  
+  if (avgFocusElement) {
+    avgFocusElement.textContent = `${Math.round(avgFocusScore)}%`;
+  }
+  
+  if (modulesElement) {
+    modulesElement.textContent = completedModules.toString();
+  }
+  
+  // Update recent sessions list in dashboard
+  updateRecentSessionsList(sessions);
+  
+  // Update focus chart if it exists
+  updateFocusChart(sessions);
+}
+
+// Update recent sessions list in dashboard
+function updateRecentSessionsList(sessions) {
+  const recentSessionsList = document.querySelector('.sessions-list');
+  if (!recentSessionsList) return;
+  
+  if (sessions.length === 0) {
+    recentSessionsList.innerHTML = `
+      <p class="empty-state">
+        No recent study sessions found. Start tracking your focus to see data here.
+      </p>
+    `;
+    return;
+  }
+  
+  // Sort sessions by date, newest first
+  const sortedSessions = [...sessions].sort((a, b) => 
+    new Date(b.startTime || b.createdAt || 0) - new Date(a.startTime || a.createdAt || 0)
+  );
+  
+  // Take the 5 most recent sessions
+  const recentSessions = sortedSessions.slice(0, 5);
+  
+  recentSessionsList.innerHTML = recentSessions.map(session => {
+    const startTime = new Date(session.startTime);
+    const formattedDate = startTime.toLocaleDateString();
+    const formattedTime = startTime.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+    const duration = Math.round((session.endTime - session.startTime) / 1000 / 60); // Duration in minutes
+    
+    return `
+      <div class="session-item">
+        <div class="session-date">
+          <span class="material-icons">event</span>
+          ${formattedDate}, ${formattedTime}
+        </div>
+        <div class="session-details">
+          <div class="session-duration">
+            <span class="material-icons">timer</span>
+            ${duration} min
+          </div>
+          <div class="session-focus">
+            <span class="material-icons">psychology</span>
+            Score: ${Math.round(session.attentionScore)}%
+          </div>
+        </div>
+      </div>
+    `;
+  }).join('');
+}
+
+// Update focus chart with session data
+function updateFocusChart(sessions) {
+  const chartElement = document.getElementById('focus-chart');
+  if (!chartElement) return;
+  
+  try {
+    // Only use sessions from the last 7 days
+    const oneWeekAgo = new Date();
+    oneWeekAgo.setDate(oneWeekAgo.getDate() - 7);
+    
+    const recentSessions = sessions.filter(session => 
+      new Date(session.startTime) >= oneWeekAgo
+    );
+    
+    // If no recent sessions, show placeholder chart
+    if (recentSessions.length === 0) {
+      createPlaceholderChart(chartElement);
+      return;
+    }
+    
+    // Group sessions by day
+    const sessionsByDay = {};
+    const dayLabels = [];
+    
+    // Initialize the last 7 days
+    for (let i = 6; i >= 0; i--) {
+      const date = new Date();
+      date.setDate(date.getDate() - i);
+      const dayKey = date.toISOString().slice(0, 10);
+      const dayName = date.toLocaleDateString('en-US', { weekday: 'short' });
+      
+      sessionsByDay[dayKey] = {
+        scores: [],
+        day: dayName,
+        date: dayKey
+      };
+      
+      dayLabels.push(dayName);
+    }
+    
+    // Add sessions to their respective days
+    recentSessions.forEach(session => {
+      const date = new Date(session.startTime);
+      const dayKey = date.toISOString().slice(0, 10);
+      
+      if (sessionsByDay[dayKey]) {
+        sessionsByDay[dayKey].scores.push(session.attentionScore);
+      }
+    });
+    
+    // Calculate average scores for each day
+    const currentWeekData = [];
+    const previousWeekData = [];
+    
+    Object.keys(sessionsByDay).forEach(day => {
+      const scores = sessionsByDay[day].scores;
+      
+      // Current week data
+      if (scores.length > 0) {
+        const avgScore = scores.reduce((sum, score) => sum + score, 0) / scores.length;
+        currentWeekData.push(Math.round(avgScore));
+      } else {
+        currentWeekData.push(null); // No data for this day
+      }
+      
+      // Previous week data (placeholder - would need actual previous week data)
+      previousWeekData.push(Math.random() * 30 + 60); // Random value between 60-90
+    });
+    
+    // Create SVG chart
+    createFocusChart(chartElement, dayLabels, currentWeekData, previousWeekData);
+  } catch (error) {
+    console.error('Error updating focus chart:', error);
+    createPlaceholderChart(chartElement);
+  }
+}
+
+// Create focus chart with real data
+function createFocusChart(chartElement, labels, currentData, previousData) {
+  const width = 800;
+  const height = 300;
+  const padding = { top: 30, right: 20, bottom: 40, left: 40 };
+  
+  // Determine max value for scaling
+  const maxValue = Math.max(
+    ...currentData.filter(v => v !== null),
+    ...previousData
+  );
+  
+  // Create SVG element
+  const svg = document.createElementNS('http://www.w3.org/2000/svg', 'svg');
+  svg.setAttribute('width', '100%');
+  svg.setAttribute('height', '100%');
+  svg.setAttribute('viewBox', `0 0 ${width} ${height}`);
+  
+  // Add grid lines
+  for (let i = 0; i <= 4; i++) {
+    const y = padding.top + (height - padding.top - padding.bottom) * (i / 4);
+    const line = document.createElementNS('http://www.w3.org/2000/svg', 'line');
+    line.setAttribute('x1', padding.left);
+    line.setAttribute('y1', y);
+    line.setAttribute('x2', width - padding.right);
+    line.setAttribute('y2', y);
+    line.setAttribute('stroke', 'rgba(255,255,255,0.1)');
+    line.setAttribute('stroke-width', '1');
+    svg.appendChild(line);
+    
+    // Add Y-axis labels
+    const label = document.createElementNS('http://www.w3.org/2000/svg', 'text');
+    label.setAttribute('x', padding.left - 10);
+    label.setAttribute('y', y + 5);
+    label.setAttribute('text-anchor', 'end');
+    label.setAttribute('fill', '#b0b7c3');
+    label.setAttribute('font-size', '12');
+    label.textContent = `${Math.round(maxValue * (1 - i / 4))}`;
+    svg.appendChild(label);
+  }
+  
+  // Create current week line path
+  let currentPath = `M${padding.left},${padding.top + height - padding.top - padding.bottom}`;
+  let validPoints = 0;
+  
+  currentData.forEach((value, index) => {
+    if (value !== null) {
+      const x = padding.left + (width - padding.left - padding.right) * (index / (labels.length - 1));
+      const y = padding.top + (height - padding.top - padding.bottom) * (1 - value / maxValue);
+      
+      if (validPoints === 0) {
+        currentPath = `M${x},${y}`;
+      } else {
+        currentPath += ` L${x},${y}`;
+      }
+      
+      validPoints++;
+    }
+  });
+  
+  // If we have at least two points, add the path
+  if (validPoints >= 2) {
+    const path = document.createElementNS('http://www.w3.org/2000/svg', 'path');
+    path.setAttribute('d', currentPath);
+    path.setAttribute('fill', 'none');
+    path.setAttribute('stroke', '#3366ff');
+    path.setAttribute('stroke-width', '3');
+    svg.appendChild(path);
+  }
+  
+  // Create previous week line path
+  let prevPath = '';
+  validPoints = 0;
+  
+  previousData.forEach((value, index) => {
+    const x = padding.left + (width - padding.left - padding.right) * (index / (labels.length - 1));
+    const y = padding.top + (height - padding.top - padding.bottom) * (1 - value / maxValue);
+    
+    if (validPoints === 0) {
+      prevPath = `M${x},${y}`;
+    } else {
+      prevPath += ` L${x},${y}`;
+    }
+    
+    validPoints++;
+  });
+  
+  // Add previous week path with dashed line
+  if (validPoints >= 2) {
+    const path = document.createElementNS('http://www.w3.org/2000/svg', 'path');
+    path.setAttribute('d', prevPath);
+    path.setAttribute('fill', 'none');
+    path.setAttribute('stroke', '#ff9966');
+    path.setAttribute('stroke-width', '3');
+    path.setAttribute('stroke-dasharray', '5,5');
+    svg.appendChild(path);
+  }
+  
+  // Add X-axis labels
+  labels.forEach((label, index) => {
+    const x = padding.left + (width - padding.left - padding.right) * (index / (labels.length - 1));
+    const text = document.createElementNS('http://www.w3.org/2000/svg', 'text');
+    text.setAttribute('x', x);
+    text.setAttribute('y', height - 10);
+    text.setAttribute('text-anchor', 'middle');
+    text.setAttribute('fill', '#b0b7c3');
+    text.setAttribute('font-size', '12');
+    text.textContent = label;
+    svg.appendChild(text);
+  });
+  
+  // Add legend
+  const legend1 = document.createElementNS('http://www.w3.org/2000/svg', 'circle');
+  legend1.setAttribute('cx', width - 150);
+  legend1.setAttribute('cy', 20);
+  legend1.setAttribute('r', 5);
+  legend1.setAttribute('fill', '#3366ff');
+  svg.appendChild(legend1);
+  
+  const legend1Text = document.createElementNS('http://www.w3.org/2000/svg', 'text');
+  legend1Text.setAttribute('x', width - 140);
+  legend1Text.setAttribute('y', 25);
+  legend1Text.setAttribute('fill', '#ffffff');
+  legend1Text.setAttribute('font-size', '12');
+  legend1Text.textContent = 'This week';
+  svg.appendChild(legend1Text);
+  
+  const legend2 = document.createElementNS('http://www.w3.org/2000/svg', 'circle');
+  legend2.setAttribute('cx', width - 60);
+  legend2.setAttribute('cy', 20);
+  legend2.setAttribute('r', 5);
+  legend2.setAttribute('fill', '#ff9966');
+  svg.appendChild(legend2);
+  
+  const legend2Text = document.createElementNS('http://www.w3.org/2000/svg', 'text');
+  legend2Text.setAttribute('x', width - 50);
+  legend2Text.setAttribute('y', 25);
+  legend2Text.setAttribute('fill', '#ffffff');
+  legend2Text.setAttribute('font-size', '12');
+  legend2Text.textContent = 'Last week';
+  svg.appendChild(legend2Text);
+  
+  // Clear and append the SVG
+  chartElement.innerHTML = '';
+  chartElement.appendChild(svg);
+}
+
+// Create placeholder chart when no data is available
+function createPlaceholderChart(chartElement) {
+  const chartHTML = `
+    <div class="chart-placeholder">
+      <svg width="100%" height="100%" viewBox="0 0 800 300">
+        <!-- Chart grid -->
+        <line x1="0" y1="250" x2="800" y2="250" stroke="rgba(255,255,255,0.1)" stroke-width="1"/>
+        <line x1="0" y1="200" x2="800" y2="200" stroke="rgba(255,255,255,0.1)" stroke-width="1"/>
+        <line x1="0" y1="150" x2="800" y2="150" stroke="rgba(255,255,255,0.1)" stroke-width="1"/>
+        <line x1="0" y1="100" x2="800" y2="100" stroke="rgba(255,255,255,0.1)" stroke-width="1"/>
+        <line x1="0" y1="50" x2="800" y2="50" stroke="rgba(255,255,255,0.1)" stroke-width="1"/>
+        
+        <!-- Chart data - Focus level line -->
+        <path d="M0,200 Q100,180 200,150 T400,100 T600,170 T800,120" fill="none" stroke="#3366ff" stroke-width="3"/>
+        
+        <!-- Chart data - Previous period line -->
+        <path d="M0,180 Q100,200 200,220 T400,150 T600,190 T800,170" fill="none" stroke="#ff9966" stroke-width="3" stroke-dasharray="5,5"/>
+        
+        <!-- X-axis labels -->
+        <text x="0" y="270" fill="#b0b7c3" font-size="12">Mon</text>
+        <text x="133" y="270" fill="#b0b7c3" font-size="12">Tue</text>
+        <text x="266" y="270" fill="#b0b7c3" font-size="12">Wed</text>
+        <text x="399" y="270" fill="#b0b7c3" font-size="12">Thu</text>
+        <text x="532" y="270" fill="#b0b7c3" font-size="12">Fri</text>
+        <text x="665" y="270" fill="#b0b7c3" font-size="12">Sat</text>
+        <text x="798" y="270" fill="#b0b7c3" font-size="12">Sun</text>
+        
+        <!-- Legend -->
+        <circle cx="650" cy="20" r="5" fill="#3366ff"/>
+        <text x="660" y="25" fill="#ffffff" font-size="12">This week</text>
+        <circle cx="740" cy="20" r="5" fill="#ff9966"/>
+        <text x="750" y="25" fill="#ffffff" font-size="12">Last week</text>
+      </svg>
+    </div>
+  `;
+
+  chartElement.innerHTML = chartHTML;
+}
+
+// Main function to initialize focus tracking
 async function initializeFocusTracking() {
   const focusContainer = document.getElementById('focus-tracking-container');
   if (!focusContainer) {
@@ -1462,11 +2007,158 @@ async function initializeFocusTracking() {
   }
   
   // Create focus tracker if not exists
-  if (!focusTracker) {
-    focusTracker = new FocusTracker();
-    await focusTracker.initialize(focusContainer);
+  if (!window.focusTracker) {
+    window.focusTracker = new FocusTracker();
+    await window.focusTracker.initialize(focusContainer);
   }
 }
+
+// Load focus sessions from local storage and update the dashboard
+function loadAndUpdateFocusSessions() {
+  try {
+    const savedSessions = localStorage.getItem('focusSessions');
+    if (savedSessions) {
+      const sessions = JSON.parse(savedSessions);
+      console.log(`Loaded ${sessions.length} focus sessions from storage`);
+      
+      // Update dashboard with loaded sessions
+      updateDashboardWithFocusData(sessions);
+      return sessions;
+    }
+  } catch (error) {
+    console.error('Error loading focus sessions:', error);
+  }
+  return [];
+}
+
+// Export focus sessions to a JSON file
+async function exportFocusSessions() {
+  try {
+    const sessions = loadAndUpdateFocusSessions();
+    
+    if (sessions.length === 0) {
+      alert('No focus sessions to export');
+      return;
+    }
+    
+    const dataStr = JSON.stringify(sessions, null, 2);
+    const dataUri = 'data:application/json;charset=utf-8,' + encodeURIComponent(dataStr);
+    
+    const exportFileDefaultName = `focus-sessions-${new Date().toISOString().slice(0, 10)}.json`;
+    
+    const linkElement = document.createElement('a');
+    linkElement.setAttribute('href', dataUri);
+    linkElement.setAttribute('download', exportFileDefaultName);
+    linkElement.style.display = 'none';
+    document.body.appendChild(linkElement); // Required for Firefox
+    
+    linkElement.click();
+    
+    document.body.removeChild(linkElement);
+  } catch (error) {
+    console.error('Error exporting focus sessions:', error);
+    alert('Failed to export focus sessions');
+  }
+}
+
+// Import focus sessions from a JSON file
+async function importFocusSessions(fileInputEvent) {
+  try {
+    const file = fileInputEvent.target.files[0];
+    if (!file) {
+      return;
+    }
+    
+    const reader = new FileReader();
+    
+    reader.onload = function(event) {
+      try {
+        const importedSessions = JSON.parse(event.target.result);
+        
+        if (!Array.isArray(importedSessions)) {
+          throw new Error('Invalid format: imported data is not an array');
+        }
+        
+        const validSessions = importedSessions.filter(session => {
+          return session.startTime && (session.endTime || session.sessionDuration) && 
+                 typeof session.attentionScore === 'number';
+        });
+        
+        if (validSessions.length === 0) {
+          throw new Error('No valid focus sessions found in the imported file');
+        }
+        
+        // Get existing sessions
+        let existingSessions = [];
+        try {
+          const savedData = localStorage.getItem('focusSessions');
+          if (savedData) {
+            existingSessions = JSON.parse(savedData);
+          }
+        } catch (e) {
+          console.warn('Could not load existing sessions, starting fresh');
+          existingSessions = [];
+        }
+        
+        // Merge with existing sessions, avoiding duplicates by ID
+        const existingIds = new Set(existingSessions.map(s => s.id));
+        
+        const newSessions = [
+          ...existingSessions,
+          ...validSessions.filter(s => !existingIds.has(s.id))
+        ];
+        
+        // Sort and limit to 50 sessions
+        const finalSessions = newSessions
+          .sort((a, b) => new Date(b.startTime) - new Date(a.startTime))
+          .slice(0, 50);
+        
+        // Save to localStorage
+        localStorage.setItem('focusSessions', JSON.stringify(finalSessions));
+        
+        // Update the UI
+        updateDashboardWithFocusData(finalSessions);
+        
+        // Show success message
+        const notification = document.createElement('div');
+        notification.className = 'notification';
+        notification.textContent = `Successfully imported ${validSessions.length} focus sessions`;
+        document.body.appendChild(notification);
+        
+        setTimeout(() => {
+          notification.classList.add('show');
+        }, 10);
+        
+        setTimeout(() => {
+          notification.classList.remove('show');
+          setTimeout(() => {
+            document.body.removeChild(notification);
+          }, 300);
+        }, 3000);
+        
+      } catch (error) {
+        console.error('Error parsing imported file:', error);
+        alert(`Error importing focus sessions: ${error.message}`);
+      }
+    };
+    
+    reader.onerror = function() {
+      alert('Error reading the file');
+    };
+    
+    reader.readAsText(file);
+  } catch (error) {
+    console.error('Error importing focus sessions:', error);
+    alert(`Error importing focus sessions: ${error.message}`);
+  }
+}
+
+
+// Initialize focus tracker instance
+let focusTracker = null;
+
+// Function to initialize focus tracking components
+
 
 // Update dashboard with focus session data
 function updateDashboardWithFocusData(sessions) {
@@ -1909,6 +2601,21 @@ async function initApp() {
     const redirectUser = await handleRedirectResult()
     if (redirectUser) {
       console.log('User authenticated via redirect')
+    }
+
+    function initFocusTracking() {
+      // Load and update sessions on startup
+      loadAndUpdateFocusSessions();
+      
+      // Add event listeners for import/export buttons
+      document.getElementById('export-sessions')?.addEventListener('click', exportFocusSessions);
+      document.getElementById('import-sessions')?.addEventListener('change', importFocusSessions);
+      
+      // Focus section integration
+      document.querySelector('[data-section="focus"]')?.addEventListener('click', () => {
+        // Initialize focus tracking when navigating to the focus section
+        initializeFocusTracking();
+      });
     }
 
     // Initialize theme
