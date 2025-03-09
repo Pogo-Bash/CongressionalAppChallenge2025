@@ -59,10 +59,14 @@ if (window.env.firebaseConfig.clientId) {
   })
 }
 
-googleProvider.addScope('https://www.googleapis.com/auth/classroom.courses.readonly')
-googleProvider.addScope('https://www.googleapis.com/auth/classroom.coursework.me.readonly')
-googleProvider.addScope('https://www.googleapis.com/auth/classroom.rosters.readonly')
-googleProvider.addScope('https://www.googleapis.com/auth/classroom.profile.emails')
+googleProvider.addScope('https://www.googleapis.com/auth/classroom.courses.readonly');
+googleProvider.addScope('https://www.googleapis.com/auth/classroom.coursework.me.readonly');
+googleProvider.addScope('https://www.googleapis.com/auth/classroom.coursework.students');
+googleProvider.addScope('https://www.googleapis.com/auth/classroom.coursework.me');
+googleProvider.addScope('https://www.googleapis.com/auth/classroom.rosters.readonly');
+googleProvider.addScope('https://www.googleapis.com/auth/classroom.profile.emails');
+googleProvider.addScope('https://www.googleapis.com/auth/classroom.student-submissions.me.readonly');
+googleProvider.addScope('https://www.googleapis.com/auth/classroom.student-submissions.students.readonly');
 
 // Focus Sessions Management
 let focusSessionsCache = []
@@ -417,11 +421,15 @@ async function signInWithGoogle(useSameAccount = true) {
 
     const provider = new GoogleAuthProvider()
 
-    // Add scopes
+    // Add comprehensive scopes for coursework access
     provider.addScope('https://www.googleapis.com/auth/classroom.courses.readonly')
     provider.addScope('https://www.googleapis.com/auth/classroom.coursework.me.readonly')
+    provider.addScope('https://www.googleapis.com/auth/classroom.coursework.students')
+    provider.addScope('https://www.googleapis.com/auth/classroom.coursework.me')
     provider.addScope('https://www.googleapis.com/auth/classroom.rosters.readonly')
     provider.addScope('https://www.googleapis.com/auth/classroom.profile.emails')
+    provider.addScope('https://www.googleapis.com/auth/classroom.student-submissions.me.readonly')
+    provider.addScope('https://www.googleapis.com/auth/classroom.student-submissions.students.readonly')
 
     // Set custom parameters - important for proper auth flow
     provider.setCustomParameters({
@@ -439,6 +447,12 @@ async function signInWithGoogle(useSameAccount = true) {
       if (credential && credential.accessToken) {
         localStorage.setItem('googleClassroomToken', credential.accessToken)
         console.log('Token saved successfully')
+        
+        // Save token scopes for debugging if available
+        if (credential.scope) {
+          localStorage.setItem('googleClassroomTokenScopes', credential.scope)
+          console.log('Token scopes saved:', credential.scope)
+        }
       }
 
       return result.user
@@ -526,15 +540,20 @@ async function signInWithSameAccount() {
     // Regular sign-in flow
     const provider = new GoogleAuthProvider()
 
-    // Add necessary scopes
+    // Add comprehensive scopes for coursework access
     provider.addScope('https://www.googleapis.com/auth/classroom.courses.readonly')
     provider.addScope('https://www.googleapis.com/auth/classroom.coursework.me.readonly')
+    provider.addScope('https://www.googleapis.com/auth/classroom.coursework.students')
+    provider.addScope('https://www.googleapis.com/auth/classroom.coursework.me')
     provider.addScope('https://www.googleapis.com/auth/classroom.rosters.readonly')
     provider.addScope('https://www.googleapis.com/auth/classroom.profile.emails')
+    provider.addScope('https://www.googleapis.com/auth/classroom.student-submissions.me.readonly')
+    provider.addScope('https://www.googleapis.com/auth/classroom.student-submissions.students.readonly')
 
-    // Set minimal parameters
+    // Set parameters for same account - changed to 'consent' to ensure we get all permissions
     provider.setCustomParameters({
-      access_type: 'offline'
+      prompt: 'consent', // Always ask for consent to ensure we get fresh permissions
+      access_type: 'offline' // Get refresh token
     })
 
     try {
@@ -581,6 +600,7 @@ async function signInWithNewAccount() {
 
     // Clear existing authentication state
     localStorage.removeItem('googleClassroomToken')
+    localStorage.removeItem('googleClassroomTokenScopes') // Also clear scopes for clean state
     try {
       await signOut(auth)
     } catch (signOutError) {
@@ -588,15 +608,21 @@ async function signInWithNewAccount() {
     }
 
     const provider = new GoogleAuthProvider()
+    
+    // Add comprehensive scopes for coursework access
     provider.addScope('https://www.googleapis.com/auth/classroom.courses.readonly')
     provider.addScope('https://www.googleapis.com/auth/classroom.coursework.me.readonly')
+    provider.addScope('https://www.googleapis.com/auth/classroom.coursework.students')
+    provider.addScope('https://www.googleapis.com/auth/classroom.coursework.me')
     provider.addScope('https://www.googleapis.com/auth/classroom.rosters.readonly')
     provider.addScope('https://www.googleapis.com/auth/classroom.profile.emails')
+    provider.addScope('https://www.googleapis.com/auth/classroom.student-submissions.me.readonly')
+    provider.addScope('https://www.googleapis.com/auth/classroom.student-submissions.students.readonly')
 
     if (window.env?.firebaseConfig?.clientId) {
       provider.setCustomParameters({
         client_id: window.env.firebaseConfig.clientId,
-        prompt: 'select_account',
+        prompt: 'select_account', // Force account selection
         access_type: 'offline'
       })
     } else {
@@ -634,6 +660,55 @@ async function signInWithNewAccount() {
     setTimeout(() => {
       isAuthInProgress = false
     }, 1000)
+  }
+}
+
+// Updated function to extract and store token with scope information
+function extractAndStoreToken(result) {
+  try {
+    console.log('Extracting token from auth result')
+
+    if (!result) {
+      console.error('No result provided')
+      return false
+    }
+
+    // Get the credential from the result
+    const credential = GoogleAuthProvider.credentialFromResult(result)
+
+    if (!credential) {
+      console.error('No credential in auth result')
+      return false
+    }
+
+    console.log('Got credential type:', typeof credential)
+    const token = credential.accessToken
+
+    if (!token) {
+      console.error('No access token in credential')
+      return false
+    }
+
+    console.log('Token obtained, length:', token.length)
+
+    // Store the token
+    localStorage.setItem('googleClassroomToken', token)
+    console.log('Token stored in localStorage')
+
+    // Store scope information if available
+    if (credential.scope) {
+      localStorage.setItem('googleClassroomTokenScopes', credential.scope)
+      console.log('Token scopes:', credential.scope)
+    }
+
+    // Also log if it can be retrieved
+    const storedToken = localStorage.getItem('googleClassroomToken')
+    console.log('Token retrieved from storage, length:', storedToken ? storedToken.length : 0)
+
+    return true
+  } catch (error) {
+    console.error('Error extracting token:', error)
+    return false
   }
 }
 
@@ -817,18 +892,19 @@ const authService = {
 }
 
 // Google Classroom Service
+// Google Classroom Service
 const classroomService = {
   baseUrl: 'https://classroom.googleapis.com/v1',
   courseData: null,
 
   getToken() {
-    return localStorage.getItem('googleClassroomToken')
+    return localStorage.getItem('googleClassroomToken');
   },
 
   async testToken() {
-    const token = this.getToken()
+    const token = this.getToken();
     if (!token) {
-      throw new Error('No authentication token available')
+      throw new Error('No authentication token available');
     }
 
     try {
@@ -837,115 +913,407 @@ const classroomService = {
         headers: {
           Authorization: `Bearer ${token}`
         }
-      })
+      });
 
       if (!response.ok) {
-        const errorText = await response.text()
-        console.error('Token test failed:', errorText)
+        const errorText = await response.text();
+        console.error('Token test failed:', errorText);
 
         if (response.status === 401) {
           // Token expired or invalid
-          localStorage.removeItem('googleClassroomToken')
-          throw new Error('Authentication token expired. Please sign in again.')
+          localStorage.removeItem('googleClassroomToken');
+          throw new Error('Authentication token expired. Please sign in again.');
         }
 
-        throw new Error(`API error: ${response.status}`)
+        throw new Error(`API error: ${response.status}`);
       }
 
-      console.log('Token test successful')
-      return true
+      console.log('Token test successful');
+      return true;
     } catch (error) {
-      console.error('Token test error:', error)
-      throw error
+      console.error('Token test error:', error);
+      throw error;
     }
   },
 
   async fetchCourses() {
-    const token = this.getToken()
+    const token = this.getToken();
     if (!token) {
-      throw new Error('Not authenticated with Google Classroom')
+      throw new Error('Not authenticated with Google Classroom');
     }
 
     try {
-      console.log('Fetching Google Classroom courses...')
+      console.log('Fetching Google Classroom courses...');
       const response = await fetch(`${this.baseUrl}/courses?courseStates=ACTIVE`, {
         headers: {
           Authorization: `Bearer ${token}`
         }
-      })
+      });
 
       if (!response.ok) {
-        const errorText = await response.text()
-        console.error('API error response:', errorText)
+        const errorText = await response.text();
+        console.error('API error response:', errorText);
 
         if (response.status === 401) {
-          localStorage.removeItem('googleClassroomToken')
-          throw new Error('Authentication token expired. Please sign in again.')
+          localStorage.removeItem('googleClassroomToken');
+          throw new Error('Authentication token expired. Please sign in again.');
         }
 
-        throw new Error(`Failed to fetch courses: ${response.status}`)
+        throw new Error(`Failed to fetch courses: ${response.status}`);
       }
 
-      const data = await response.json()
-      console.log('Courses response data:', data)
-      this.courseData = data.courses || []
+      const data = await response.json();
+      console.log('Courses response data:', data);
+      this.courseData = data.courses || [];
 
       if (!data.courses || data.courses.length === 0) {
-        console.log('No courses found in the response')
+        console.log('No courses found in the response');
       } else {
-        console.log(`Found ${data.courses.length} courses`)
+        console.log(`Found ${data.courses.length} courses`);
       }
 
-      return this.courseData
+      return this.courseData;
     } catch (error) {
-      console.error('Error fetching Google Classroom courses:', error)
+      console.error('Error fetching Google Classroom courses:', error);
 
       // Handle token expired error
       if (error.message.includes('401')) {
-        localStorage.removeItem('googleClassroomToken')
-        throw new Error('Google Classroom session expired. Please sign in again.')
+        localStorage.removeItem('googleClassroomToken');
+        throw new Error('Google Classroom session expired. Please sign in again.');
       }
 
-      throw error
+      throw error;
     }
   },
 
+  // Enhanced fetchCourseWork that tries multiple approaches
   async fetchCourseWork(courseId) {
-    const token = this.getToken()
+    const token = this.getToken();
     if (!token) {
-      throw new Error('Not authenticated with Google Classroom')
+      throw new Error('Not authenticated with Google Classroom');
     }
 
+    // First try teacher endpoint (works if user is a teacher)
     try {
-      console.log(`Fetching coursework for course ${courseId}...`)
+      console.log(`Fetching coursework for course ${courseId} (teacher endpoint)...`);
       const response = await fetch(`${this.baseUrl}/courses/${courseId}/courseWork`, {
         headers: {
           Authorization: `Bearer ${token}`
         }
-      })
+      });
 
-      if (!response.ok) {
-        if (response.status === 401) {
-          localStorage.removeItem('googleClassroomToken')
-          throw new Error('Authentication token expired. Please sign in again.')
+      console.log(`Coursework teacher endpoint response status: ${response.status}`);
+      
+      if (response.ok) {
+        const data = await response.json();
+        console.log('Coursework response data (teacher endpoint):', data);
+        
+        if (data.courseWork && data.courseWork.length > 0) {
+          console.log(`Found ${data.courseWork.length} coursework items from teacher endpoint`);
+          return data.courseWork;
+        } else {
+          console.log('No coursework found in teacher endpoint response');
         }
-
-        throw new Error(`Failed to fetch coursework: ${response.status}`)
+      } else {
+        console.log(`Teacher endpoint returned ${response.status}, trying student endpoint...`);
       }
-
-      const data = await response.json()
-      console.log('Coursework fetched:', data.courseWork ? data.courseWork.length : 0)
-      return data.courseWork || []
     } catch (error) {
-      console.error(`Error fetching coursework for course ${courseId}:`, error)
-      throw error
+      console.log('Error with teacher endpoint, trying student endpoint:', error);
     }
+
+    // If teacher endpoint fails or returns empty, try course materials endpoint
+    try {
+      console.log(`Fetching coursework materials for course ${courseId}...`);
+      const response = await fetch(`${this.baseUrl}/courses/${courseId}/courseWorkMaterials`, {
+        headers: {
+          Authorization: `Bearer ${token}`
+        }
+      });
+
+      console.log(`Coursework materials endpoint response status: ${response.status}`);
+      
+      if (response.ok) {
+        const data = await response.json();
+        console.log('Coursework materials response data:', data);
+        
+        if (data.courseWorkMaterial && data.courseWorkMaterial.length > 0) {
+          console.log(`Found ${data.courseWorkMaterial.length} materials`);
+          
+          // Convert materials format to match coursework format
+          const formattedMaterials = data.courseWorkMaterial.map(material => ({
+            id: material.id,
+            title: material.title,
+            description: material.description,
+            materials: material.materials,
+            state: material.state,
+            alternateLink: material.alternateLink,
+            creationTime: material.creationTime,
+            updateTime: material.updateTime,
+            workType: 'MATERIAL' // Custom type for materials
+          }));
+          
+          return formattedMaterials;
+        }
+      }
+    } catch (materialError) {
+      console.error('Error fetching course materials:', materialError);
+    }
+    
+    // Finally try student coursework endpoint
+    try {
+      console.log(`Fetching student submissions for course ${courseId}...`);
+      const response = await fetch(`${this.baseUrl}/courses/${courseId}/courseWork/-/studentSubmissions`, {
+        headers: {
+          Authorization: `Bearer ${token}`
+        }
+      });
+
+      console.log(`Student submissions endpoint response status: ${response.status}`);
+      
+      if (response.ok) {
+        const data = await response.json();
+        console.log('Student submissions data:', data);
+        
+        if (data.studentSubmissions && data.studentSubmissions.length > 0) {
+          // Extract unique courseWorkIds from submissions
+          const courseWorkIds = [...new Set(
+            data.studentSubmissions
+              .filter(sub => sub.courseWorkId)
+              .map(sub => sub.courseWorkId)
+          )];
+          
+          console.log(`Found ${courseWorkIds.length} unique courseWork IDs from submissions`);
+          
+          // If we found IDs, fetch the actual coursework for each
+          if (courseWorkIds.length > 0) {
+            const courseworks = [];
+            
+            for (const workId of courseWorkIds) {
+              try {
+                const workResponse = await fetch(
+                  `${this.baseUrl}/courses/${courseId}/courseWork/${workId}`,
+                  { headers: { Authorization: `Bearer ${token}` } }
+                );
+                
+                if (workResponse.ok) {
+                  const workData = await workResponse.json();
+                  courseworks.push(workData);
+                }
+              } catch (err) {
+                console.error(`Error fetching coursework ${workId}:`, err);
+              }
+            }
+            
+            if (courseworks.length > 0) {
+              console.log(`Successfully retrieved ${courseworks.length} coursework items`);
+              return courseworks;
+            }
+          }
+        }
+      }
+    } catch (submissionError) {
+      console.error('Error fetching student submissions:', submissionError);
+    }
+
+    // Try one more approach - coursework for student
+    try {
+      console.log(`Fetching coursework for student in course ${courseId}...`);
+      const response = await fetch(`${this.baseUrl}/courses/${courseId}/courseWork`, {
+        headers: {
+          Authorization: `Bearer ${token}`
+        }
+      });
+
+      console.log(`Coursework for student endpoint response status: ${response.status}`);
+      
+      if (response.ok) {
+        const data = await response.json();
+        console.log('Coursework for student response data:', data);
+        
+        if (data.courseWork && data.courseWork.length > 0) {
+          console.log(`Found ${data.courseWork.length} coursework items from student endpoint`);
+          return data.courseWork;
+        }
+      }
+    } catch (studentError) {
+      console.error('Error fetching coursework for student:', studentError);
+    }
+    
+    // If we reach here, we couldn't get any coursework through any method
+    console.log(`No coursework found for course ${courseId} through any method`);
+    return [];
+  },
+
+  updateCourseWork(courseId, courseWork) {
+    if (this.courseData) {
+      const course = this.courseData.find(c => c.id === courseId);
+      if (course) {
+        course.courseWork = courseWork;
+        return true;
+      }
+    }
+    return false;
   },
 
   getCourseData() {
-    return this.courseData
+    return this.courseData;
+  },
+
+  // Helper method to ensure we have courseWork for all selected courses
+  async fetchCourseWorkForCourses(courseIds) {
+    if (!courseIds || courseIds.length === 0) {
+      return [];
+    }
+
+    const selectedCourses = [];
+    for (const courseId of courseIds) {
+      try {
+        // Check if we already have the course in our data
+        const existingCourse = this.courseData?.find(c => c.id === courseId);
+        let courseName = 'Unknown Course';
+        let courseWork = [];
+        
+        if (existingCourse) {
+          courseName = existingCourse.name;
+          
+          // Check if we already have coursework for this course
+          if (existingCourse.courseWork) {
+            courseWork = existingCourse.courseWork;
+            console.log(`Using cached coursework for course ${courseId}`);
+          } else {
+            // Fetch coursework if not cached
+            console.log(`Fetching coursework for course ${courseId}`);
+            courseWork = await this.fetchCourseWork(courseId);
+            
+            // Update cache
+            existingCourse.courseWork = courseWork;
+          }
+        } else {
+          // Get course name from DOM if needed
+          const courseElement = document.querySelector(`.course-card[data-course-id="${courseId}"]`);
+          if (courseElement) {
+            const courseNameElement = courseElement.querySelector('.course-name');
+            if (courseNameElement) {
+              courseName = courseNameElement.textContent;
+            }
+          }
+          
+          // Fetch coursework
+          courseWork = await this.fetchCourseWork(courseId);
+        }
+
+        selectedCourses.push({
+          id: courseId,
+          name: courseName,
+          courseWork: courseWork
+        });
+      } catch (error) {
+        console.error(`Error fetching coursework for course ${courseId}:`, error);
+        
+        // Still add the course with empty coursework
+        const courseElement = document.querySelector(`.course-card[data-course-id="${courseId}"]`);
+        let courseName = 'Unknown Course';
+        
+        if (courseElement) {
+          const courseNameElement = courseElement.querySelector('.course-name');
+          if (courseNameElement) {
+            courseName = courseNameElement.textContent;
+          }
+        }
+        
+        selectedCourses.push({
+          id: courseId,
+          name: courseName,
+          courseWork: [],
+          error: error.message
+        });
+      }
+    }
+    
+    return selectedCourses;
+  },
+
+  // Debug helper to log token and scope information
+  debugTokenInfo() {
+    const token = this.getToken();
+    const scopes = localStorage.getItem('googleClassroomTokenScopes');
+    
+    console.log('Token exists:', !!token);
+    console.log('Token scopes:', scopes || 'No scope information available');
+    
+    if (token) {
+      // Log the first 10 characters of the token for debugging
+      console.log('Token prefix:', token.substring(0, 10) + '...');
+    }
+    
+    return {
+      hasToken: !!token,
+      scopes: scopes ? scopes.split(' ') : []
+    };
+  },
+
+  // Method to help when testing and debugging
+  async testAllEndpoints(courseId) {
+    const token = this.getToken();
+    if (!token) {
+      console.error('No token available for testing');
+      return { success: false, error: 'No token available' };
+    }
+
+    const results = {
+      token: !!token,
+      endpoints: {}
+    };
+
+    // Test different endpoints
+    const endpoints = [
+      { name: 'courses', url: `${this.baseUrl}/courses?courseStates=ACTIVE` },
+      { name: 'teacherCourseWork', url: `${this.baseUrl}/courses/${courseId}/courseWork` },
+      { name: 'courseWorkMaterials', url: `${this.baseUrl}/courses/${courseId}/courseWorkMaterials` },
+      { name: 'studentSubmissions', url: `${this.baseUrl}/courses/${courseId}/courseWork/-/studentSubmissions` }
+    ];
+
+    for (const endpoint of endpoints) {
+      try {
+        console.log(`Testing endpoint: ${endpoint.name}`);
+        const response = await fetch(endpoint.url, {
+          headers: { Authorization: `Bearer ${token}` }
+        });
+
+        results.endpoints[endpoint.name] = {
+          status: response.status,
+          ok: response.ok
+        };
+
+        if (response.ok) {
+          const data = await response.json();
+          results.endpoints[endpoint.name].dataExists = !!data;
+          
+          // Add specific field counts based on endpoint
+          if (endpoint.name === 'courses' && data.courses) {
+            results.endpoints[endpoint.name].count = data.courses.length;
+          } else if (endpoint.name === 'teacherCourseWork' && data.courseWork) {
+            results.endpoints[endpoint.name].count = data.courseWork.length;
+          } else if (endpoint.name === 'courseWorkMaterials' && data.courseWorkMaterial) {
+            results.endpoints[endpoint.name].count = data.courseWorkMaterial.length;
+          } else if (endpoint.name === 'studentSubmissions' && data.studentSubmissions) {
+            results.endpoints[endpoint.name].count = data.studentSubmissions.length;
+          }
+        } else {
+          const errorText = await response.text();
+          results.endpoints[endpoint.name].error = errorText;
+        }
+      } catch (error) {
+        results.endpoints[endpoint.name] = {
+          error: error.message
+        };
+      }
+    }
+
+    console.log('Endpoint test results:', results);
+    return results;
   }
-}
+};
 
 // TensorFlow-based Focus Tracking
 class FocusTracker {
@@ -2640,43 +3008,42 @@ function initializeAuthUI() {
 // Load curriculum data from Google Classroom
 async function loadCurriculumData() {
   if (!authService.isLoggedIn()) {
-    console.log('Not logged in, cannot load curriculum data')
-    return
+    console.log('Not logged in, cannot load curriculum data');
+    return;
   }
 
-  const token = localStorage.getItem('googleClassroomToken')
+  const token = localStorage.getItem('googleClassroomToken');
   if (!token) {
-    console.error('No access token found. Please sign in again.')
-    return
+    console.error('No access token found. Please sign in again.');
+    return;
   }
 
-  const loadingIndicator = document.getElementById('curriculum-loading')
-  const curriculumContent = document.getElementById('curriculum-content')
-  const notLoggedIn = document.getElementById('curriculum-not-logged-in')
-  const coursesContainer = document.getElementById('courses-container')
-  const generateButtonContainer =
-    document.getElementById('generate-button-container') || createGenerateButtonContainer()
+  const loadingIndicator = document.getElementById('curriculum-loading');
+  const curriculumContent = document.getElementById('curriculum-content');
+  const notLoggedIn = document.getElementById('curriculum-not-logged-in');
+  const coursesContainer = document.getElementById('courses-container');
+  const generateButtonContainer = document.getElementById('generate-button-container') || createGenerateButtonContainer();
 
   if (!loadingIndicator || !curriculumContent || !notLoggedIn || !coursesContainer) {
-    console.error('Required curriculum DOM elements not found')
-    return
+    console.error('Required curriculum DOM elements not found');
+    return;
   }
 
   // Show loading, hide other sections
-  loadingIndicator.style.display = 'flex'
-  curriculumContent.style.display = 'none'
-  notLoggedIn.style.display = 'none'
-  generateButtonContainer.style.display = 'none'
+  loadingIndicator.style.display = 'flex';
+  curriculumContent.style.display = 'none';
+  notLoggedIn.style.display = 'none';
+  generateButtonContainer.style.display = 'none';
 
   try {
-    console.log('Fetching courses with token...')
-    const courses = await classroomService.fetchCourses()
+    console.log('Fetching courses with token...');
+    const courses = await classroomService.fetchCourses();
 
     // Clear existing courses
-    coursesContainer.innerHTML = ''
+    coursesContainer.innerHTML = '';
 
     if (!courses || courses.length === 0) {
-      console.log('No courses found, showing empty state')
+      console.log('No courses found, showing empty state');
       coursesContainer.innerHTML = `
         <div class="empty-state">
           <p>No active courses found in your Google Classroom account.</p>
@@ -2686,53 +3053,70 @@ async function loadCurriculumData() {
             Retry
           </button>
         </div>
-      `
+      `;
 
       document.getElementById('retry-classroom')?.addEventListener('click', () => {
-        loadCurriculumData()
-      })
+        loadCurriculumData();
+      });
     } else {
-      console.log(`Displaying ${courses.length} courses`)
+      console.log(`Displaying ${courses.length} courses`);
+
+      // Let's also prefetch coursework for all courses to make sure the API is working
+      console.log('Pre-fetching coursework for all courses...');
+      for (const course of courses) {
+        try {
+          console.log(`Pre-fetching coursework for course ${course.id}`);
+          const coursework = await classroomService.fetchCourseWork(course.id);
+          // Store the coursework with the course object for later use
+          course.courseWork = coursework;
+          console.log(`Successfully fetched ${coursework.length} coursework items for ${course.name}`);
+        } catch (error) {
+          console.error(`Error pre-fetching coursework for course ${course.id}:`, error);
+          // Don't fail the whole process, just log the error
+          course.courseWork = [];
+          course.courseWorkError = error.message;
+        }
+      }
 
       // Add a "Select All" option
-      const selectAllContainer = document.createElement('div')
-      selectAllContainer.className = 'select-all-container'
+      const selectAllContainer = document.createElement('div');
+      selectAllContainer.className = 'select-all-container';
       selectAllContainer.innerHTML = `
         <label class="select-all-label">
           <input type="checkbox" id="select-all-courses" class="course-checkbox">
           <span>Select All Courses</span>
         </label>
-      `
-      coursesContainer.appendChild(selectAllContainer)
+      `;
+      coursesContainer.appendChild(selectAllContainer);
 
       // Display each course with checkbox
       courses.forEach((course) => {
-        const courseCard = createCourseCard(course)
-        coursesContainer.appendChild(courseCard)
-      })
+        const courseCard = createCourseCard(course);
+        coursesContainer.appendChild(courseCard);
+      });
 
       // Add event listeners for checkboxes
-      setupCheckboxListeners()
+      setupCheckboxListeners();
 
       // Add event listeners for view details buttons
       document.querySelectorAll('.view-details-btn').forEach((button) => {
         button.addEventListener('click', (e) => {
-          e.stopPropagation()
-          const courseId = button.dataset.courseId
-          viewCourseDetails(courseId)
-        })
-      })
+          e.stopPropagation();
+          const courseId = button.dataset.courseId;
+          viewCourseDetails(courseId);
+        });
+      });
     }
 
     // Hide loading, show content
-    loadingIndicator.style.display = 'none'
-    curriculumContent.style.display = 'block'
+    loadingIndicator.style.display = 'none';
+    curriculumContent.style.display = 'block';
   } catch (error) {
-    console.error('Error loading curriculum data:', error)
+    console.error('Error loading curriculum data:', error);
 
     // Show error state
-    loadingIndicator.style.display = 'none'
-    curriculumContent.style.display = 'block'
+    loadingIndicator.style.display = 'none';
+    curriculumContent.style.display = 'block';
     coursesContainer.innerHTML = `
       <div class="error-state">
         <p>Error loading your Google Classroom courses: ${error.message}</p>
@@ -2745,21 +3129,21 @@ async function loadCurriculumData() {
           Sign In Again
         </button>
       </div>
-    `
+    `;
 
     document.getElementById('retry-classroom')?.addEventListener('click', () => {
-      loadCurriculumData()
-    })
+      loadCurriculumData();
+    });
 
     document.getElementById('relogin-classroom')?.addEventListener('click', async () => {
       try {
-        localStorage.removeItem('googleClassroomToken')
-        await authService.login()
+        localStorage.removeItem('googleClassroomToken');
+        await authService.login();
       } catch (loginError) {
-        console.error('Failed to re-login:', loginError)
-        alert(`Failed to sign in: ${loginError.message}`)
+        console.error('Failed to re-login:', loginError);
+        alert(`Failed to sign in: ${loginError.message}`);
       }
-    })
+    });
   }
 }
 
@@ -3507,142 +3891,242 @@ function formatDate(dateObj) {
 async function viewCourseDetails(courseId) {
   try {
     // Show loading indicator
-    const loadingIndicator = document.createElement('div')
-    loadingIndicator.className = 'loading-indicator'
+    const loadingIndicator = document.createElement('div');
+    loadingIndicator.className = 'loading-indicator';
     loadingIndicator.innerHTML = `
-     <span class="material-icons rotating">sync</span>
-     <p>Loading course details...</p>
-   `
-    document.body.appendChild(loadingIndicator)
+      <span class="material-icons rotating">sync</span>
+      <p>Loading course details...</p>
+    `;
+    document.body.appendChild(loadingIndicator);
 
-    // Fetch course work data
-    const courseWork = await classroomService.fetchCourseWork(courseId)
+    // Get the course from the existing data if possible
+    const courseElement = document.querySelector(`.course-card[data-course-id="${courseId}"]`);
+    const courseName = courseElement?.querySelector('.course-name')?.textContent || 'Course Details';
+    
+    // Try to get course work data - first check if we have already fetched it
+    let courseWork = [];
+    const courses = classroomService.getCourseData();
+    const course = courses?.find(c => c.id === courseId);
+    
+    if (course && course.courseWork) {
+      console.log(`Using previously fetched coursework for course ${courseId}`);
+      courseWork = course.courseWork;
+    } else {
+      // Fetch course work data if we don't have it cached
+      console.log(`Fetching coursework for course ${courseId} on demand`);
+      try {
+        courseWork = await classroomService.fetchCourseWork(courseId);
+        // Cache the result for future use
+        if (course) {
+          course.courseWork = courseWork;
+        }
+      } catch (fetchError) {
+        console.error(`Error fetching course work for ${courseId}:`, fetchError);
+        // We'll handle this gracefully below
+      }
+    }
 
     // Remove loading indicator
-    document.body.removeChild(loadingIndicator)
-
-    // Get course name
-    const courseElement = document.querySelector(`.course-card[data-course-id="${courseId}"]`)
-    const courseName = courseElement?.querySelector('.course-name')?.textContent || 'Course Details'
+    document.body.removeChild(loadingIndicator);
 
     // Create the modal
-    const modal = document.createElement('div')
-    modal.className = 'modal'
-    modal.id = `course-details-modal-${courseId}`
+    const modal = document.createElement('div');
+    modal.className = 'modal';
+    modal.id = `course-details-modal-${courseId}`;
     modal.innerHTML = `
-     <div class="modal-content">
-       <div class="modal-header">
-         <h2>${courseName}</h2>
-         <button class="close-button">&times;</button>
-       </div>
-       <div class="modal-body">
-         <h3>Assignments and Materials</h3>
-         <div class="coursework-list">
-           ${
-             courseWork.length === 0
-               ? '<p class="empty-state">No assignments or materials found for this course.</p>'
-               : courseWork
-                   .map(
-                     (item) => `
-               <div class="coursework-item">
-                 <div class="coursework-title">
-                   <span class="material-icons">${getWorkTypeIcon(item.workType)}</span>
-                   ${item.title}
-                 </div>
-                 ${
-                   item.description
-                     ? `<div class="coursework-description">${item.description}</div>`
-                     : ''
-                 }
-                 <div class="coursework-meta">
-                   <span class="coursework-type">${item.workType || 'Assignment'}</span>
-                   ${
-                     item.dueDate
-                       ? `<span class="coursework-due">Due: ${formatDate(item.dueDate)}</span>`
-                       : ''
-                   }
-                 </div>
-               </div>
-             `
-                   )
-                   .join('')
-           }
-         </div>
-       </div>
-     </div>
-   `
+      <div class="modal-content">
+        <div class="modal-header">
+          <h2>${courseName}</h2>
+          <button class="close-button">&times;</button>
+        </div>
+        <div class="modal-body">
+          <h3>Assignments and Materials</h3>
+          <div class="coursework-list">
+            ${
+              courseWork.length === 0
+                ? '<p class="empty-state">No assignments or materials found for this course.</p>'
+                : courseWork
+                    .map(
+                      (item) => `
+                <div class="coursework-item">
+                  <div class="coursework-title">
+                    <span class="material-icons">${getWorkTypeIcon(item.workType)}</span>
+                    ${item.title}
+                  </div>
+                  ${
+                    item.description
+                      ? `<div class="coursework-description">${item.description}</div>`
+                      : ''
+                  }
+                  <div class="coursework-meta">
+                    <span class="coursework-type">${item.workType || 'Assignment'}</span>
+                    ${
+                      item.dueDate
+                        ? `<span class="coursework-due">Due: ${formatDate(item.dueDate)}</span>`
+                        : ''
+                    }
+                  </div>
+                </div>
+              `
+                    )
+                    .join('')
+            }
+          </div>
+        </div>
+      </div>
+    `;
 
     // Add the modal to the body
-    document.body.appendChild(modal)
+    document.body.appendChild(modal);
 
     // Force a reflow before adding the active class (for animation)
-    void modal.offsetWidth
+    void modal.offsetWidth;
 
     // Show the modal with animation
     setTimeout(() => {
-      modal.classList.add('active')
-    }, 10)
+      modal.classList.add('active');
+    }, 10);
 
     // Add event listener to close button
     modal.querySelector('.close-button').addEventListener('click', () => {
-      closeModal(modal)
-    })
+      closeModal(modal);
+    });
 
     // Close modal when clicking outside of content
     modal.addEventListener('click', (event) => {
       if (event.target === modal) {
-        closeModal(modal)
+        closeModal(modal);
       }
-    })
+    });
 
     // Add keyboard events for accessibility
     document.addEventListener('keydown', function escKeyHandler(e) {
       if (e.key === 'Escape') {
-        closeModal(modal)
-        document.removeEventListener('keydown', escKeyHandler)
+        closeModal(modal);
+        document.removeEventListener('keydown', escKeyHandler);
       }
-    })
+    });
   } catch (error) {
-    console.error('Error loading course details:', error)
+    console.error('Error loading course details:', error);
 
     // Show error in a clean modal
-    const errorModal = document.createElement('div')
-    errorModal.className = 'modal active'
+    const errorModal = document.createElement('div');
+    errorModal.className = 'modal active';
     errorModal.innerHTML = `
-     <div class="modal-content">
-       <div class="modal-header">
-         <h2>Error</h2>
-         <button class="close-button">&times;</button>
-       </div>
-       <div class="modal-body">
-         <p>Failed to load course details: ${error.message}</p>
-         <button class="primary-button" id="retry-course-details">
-           <span class="material-icons">refresh</span>
-           Retry
-         </button>
-       </div>
-     </div>
-   `
+      <div class="modal-content">
+        <div class="modal-header">
+          <h2>Error</h2>
+          <button class="close-button">&times;</button>
+        </div>
+        <div class="modal-body">
+          <p>Failed to load course details: ${error.message}</p>
+          <button class="primary-button" id="retry-course-details">
+            <span class="material-icons">refresh</span>
+            Retry
+          </button>
+        </div>
+      </div>
+    `;
 
-    document.body.appendChild(errorModal)
+    document.body.appendChild(errorModal);
 
     // Set up event listeners for error modal
     errorModal.querySelector('.close-button').addEventListener('click', () => {
-      closeModal(errorModal)
-    })
+      closeModal(errorModal);
+    });
 
     errorModal.querySelector('#retry-course-details')?.addEventListener('click', () => {
-      closeModal(errorModal)
-      viewCourseDetails(courseId)
-    })
+      closeModal(errorModal);
+      viewCourseDetails(courseId);
+    });
 
     errorModal.addEventListener('click', (event) => {
       if (event.target === errorModal) {
-        closeModal(errorModal)
+        closeModal(errorModal);
       }
-    })
+    });
   }
 }
+
+const classroomServiceUpdate = {
+  // Add this method to explicitly update a course's coursework
+  updateCourseWork(courseId, courseWork) {
+    if (this.courseData) {
+      const course = this.courseData.find(c => c.id === courseId);
+      if (course) {
+        course.courseWork = courseWork;
+        return true;
+      }
+    }
+    return false;
+  },
+  
+  // Ensure generateCurriculum properly retrieves coursework
+  async generateCurriculum(courseIds, useSmart = false) {
+    if (!courseIds || courseIds.length === 0) {
+      alert('Please select at least one course to generate a curriculum.');
+      return;
+    }
+
+    // Show loading...
+
+    try {
+      // Collect course details for selected courses
+      const selectedCourses = [];
+      for (const courseId of courseIds) {
+        try {
+          // Check if we already have coursework for this course
+          const existingCourse = this.courseData.find(c => c.id === courseId);
+          let courseWork = [];
+          
+          if (existingCourse && existingCourse.courseWork) {
+            // Use cached coursework
+            courseWork = existingCourse.courseWork;
+            console.log(`Using cached coursework for course ${courseId}`);
+          } else {
+            // Fetch coursework if not cached
+            console.log(`Fetching coursework for course ${courseId}`);
+            courseWork = await this.fetchCourseWork(courseId);
+            
+            // Update cache
+            if (existingCourse) {
+              existingCourse.courseWork = courseWork;
+            }
+          }
+          
+          const courseElement = document.querySelector(`.course-card[data-course-id="${courseId}"]`);
+          const courseName = courseElement?.querySelector('.course-name')?.textContent || 'Unknown Course';
+
+          selectedCourses.push({
+            id: courseId,
+            name: courseName,
+            courseWork: courseWork
+          });
+        } catch (error) {
+          console.error(`Error fetching course work for course ${courseId}:`, error);
+          // Add the course anyway, but with empty courseWork
+          const courseElement = document.querySelector(`.course-card[data-course-id="${courseId}"]`);
+          const courseName = courseElement?.querySelector('.course-name')?.textContent || 'Unknown Course';
+          
+          selectedCourses.push({
+            id: courseId,
+            name: courseName,
+            courseWork: [],
+            error: error.message
+          });
+        }
+      }
+
+      console.log('Selected courses with courseWork:', selectedCourses);
+      
+      // Continue with generating curriculum...
+      
+    } catch (error) {
+      console.error('Error generating curriculum:', error);
+      alert(`Failed to generate curriculum: ${error.message}`);
+    }
+  }
+};
 
 // Helper function to close modal with animation
 function closeModal(modalElement) {

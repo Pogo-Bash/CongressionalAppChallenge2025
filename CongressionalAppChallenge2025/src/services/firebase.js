@@ -30,7 +30,7 @@ setPersistence(auth, browserLocalPersistence)
 
 const db = getFirestore(app);
 
-// Add Google Classroom scope to the provider
+// Add Google Classroom scope to the provider with enhanced scopes
 const googleProvider = new GoogleAuthProvider();
 
 if (firebaseConfig && firebaseConfig.clientId) {
@@ -44,10 +44,15 @@ if (firebaseConfig && firebaseConfig.clientId) {
   console.warn('No client ID found in the Firebase config!');
 }
 
+// Add ALL necessary scopes for comprehensive coursework access
 googleProvider.addScope('https://www.googleapis.com/auth/classroom.courses.readonly');
 googleProvider.addScope('https://www.googleapis.com/auth/classroom.coursework.me.readonly');
+googleProvider.addScope('https://www.googleapis.com/auth/classroom.coursework.students');
+googleProvider.addScope('https://www.googleapis.com/auth/classroom.coursework.me');
 googleProvider.addScope('https://www.googleapis.com/auth/classroom.rosters.readonly');
 googleProvider.addScope('https://www.googleapis.com/auth/classroom.profile.emails');
+googleProvider.addScope('https://www.googleapis.com/auth/classroom.student-submissions.me.readonly');
+googleProvider.addScope('https://www.googleapis.com/auth/classroom.student-submissions.students.readonly');
 
 // Track authentication in progress to prevent multiple popups
 let isAuthInProgress = false;
@@ -97,6 +102,12 @@ function extractAndStoreToken(result) {
     localStorage.setItem('googleClassroomToken', token);
     console.log('Successfully stored Google Classroom token');
     
+    // Store token scope info for debugging
+    if (credential.scope) {
+      localStorage.setItem('googleClassroomTokenScopes', credential.scope);
+      console.log('Token scopes:', credential.scope);
+    }
+    
     return true;
   } catch (error) {
     console.error('Error extracting token:', error);
@@ -139,22 +150,27 @@ export const signInWithSameAccount = async () => {
     
     const provider = new GoogleAuthProvider();
     
-    // Add necessary scopes
+    // Add ALL necessary scopes for comprehensive coursework access
     provider.addScope('https://www.googleapis.com/auth/classroom.courses.readonly');
     provider.addScope('https://www.googleapis.com/auth/classroom.coursework.me.readonly');
+    provider.addScope('https://www.googleapis.com/auth/classroom.coursework.students');
+    provider.addScope('https://www.googleapis.com/auth/classroom.coursework.me');
     provider.addScope('https://www.googleapis.com/auth/classroom.rosters.readonly');
     provider.addScope('https://www.googleapis.com/auth/classroom.profile.emails');
+    provider.addScope('https://www.googleapis.com/auth/classroom.student-submissions.me.readonly');
+    provider.addScope('https://www.googleapis.com/auth/classroom.student-submissions.students.readonly');
     
     // Set parameters for same account
     if (firebaseConfig && firebaseConfig.clientId) {
       provider.setCustomParameters({
         client_id: firebaseConfig.clientId,
-        prompt: 'none',  // Try to use existing session
+        // Changed from 'none' to 'consent' to ensure we always get fresh permissions
+        prompt: 'consent',
         access_type: 'offline'
       });
     } else {
       provider.setCustomParameters({
-        prompt: 'none',
+        prompt: 'consent',
         access_type: 'offline'
       });
     }
@@ -220,11 +236,15 @@ export const signInWithNewAccount = async () => {
     
     const provider = new GoogleAuthProvider();
     
-    // Add necessary scopes
+    // Add ALL necessary scopes for comprehensive coursework access
     provider.addScope('https://www.googleapis.com/auth/classroom.courses.readonly');
     provider.addScope('https://www.googleapis.com/auth/classroom.coursework.me.readonly');
+    provider.addScope('https://www.googleapis.com/auth/classroom.coursework.students');
+    provider.addScope('https://www.googleapis.com/auth/classroom.coursework.me');
     provider.addScope('https://www.googleapis.com/auth/classroom.rosters.readonly');
     provider.addScope('https://www.googleapis.com/auth/classroom.profile.emails');
+    provider.addScope('https://www.googleapis.com/auth/classroom.student-submissions.me.readonly');
+    provider.addScope('https://www.googleapis.com/auth/classroom.student-submissions.students.readonly');
     
     // Set parameters to force account selection
     if (firebaseConfig && firebaseConfig.clientId) {
@@ -281,6 +301,7 @@ export const signInWithNewAccount = async () => {
 
 // Legacy function for backward compatibility
 export const signInWithGoogle = async (useSameAccount = true) => {
+  console.log('signInWithGoogle called, using', useSameAccount ? 'same account' : 'new account');
   if (useSameAccount) {
     return signInWithSameAccount();
   } else {
@@ -292,6 +313,7 @@ export const logOut = async () => {
   try {
     await signOut(auth);
     localStorage.removeItem('googleClassroomToken');
+    localStorage.removeItem('googleClassroomTokenScopes'); // Also clear scopes
     console.log('Signed out and removed token from localStorage');
   } catch (error) {
     console.error("Error signing out", error);
@@ -322,6 +344,20 @@ export const handleRedirectResult = async () => {
     console.error('Error handling redirect result:', error);
     return null;
   }
+};
+
+// Function to check and log the current token's scopes
+export const debugTokenScopes = () => {
+  const token = localStorage.getItem('googleClassroomToken');
+  const scopes = localStorage.getItem('googleClassroomTokenScopes');
+  
+  console.log('Current token exists:', !!token);
+  console.log('Token scopes:', scopes || 'No scope information available');
+  
+  return {
+    hasToken: !!token,
+    scopes: scopes ? scopes.split(' ') : []
+  };
 };
 
 export { auth, db };
