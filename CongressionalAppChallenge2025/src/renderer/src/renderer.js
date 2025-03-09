@@ -25,7 +25,8 @@ import {
   signOut,
   getRedirectResult,
   setPersistence,
-  browserLocalPersistence
+  browserLocalPersistence,
+  signInWithCredential
 } from 'firebase/auth'
 import { getFirestore } from 'firebase/firestore'
 
@@ -68,63 +69,63 @@ let focusSessionsCache = []
 
 // TensorFlow Model
 
-let focusTrackingInitialized = false;
-let tensorflowModel = null;
-let faceDetector = null;
+let focusTrackingInitialized = false
+let tensorflowModel = null
+let faceDetector = null
 
 async function initializeTensorFlow() {
-  if (focusTrackingInitialized) return true;
-  
+  if (focusTrackingInitialized) return true
+
   try {
-    console.log('Initializing TensorFlow.js...');
-    
+    console.log('Initializing TensorFlow.js...')
+
     // Import TensorFlow.js dynamically
-    const tf = await import('@tensorflow/tfjs');
-    
+    const tf = await import('@tensorflow/tfjs')
+
     // Set backend based on platform
-    const backendNames = tf.engine().backendNames();
-    console.log('Available backends:', backendNames);
-    
+    const backendNames = tf.engine().backendNames()
+    console.log('Available backends:', backendNames)
+
     // Try to use WebGL if available (much faster)
     if (backendNames.includes('webgl')) {
       try {
-        console.log('Setting WebGL backend...');
-        await tf.setBackend('webgl');
+        console.log('Setting WebGL backend...')
+        await tf.setBackend('webgl')
         // Optimize WebGL for memory
-        tf.env().set('WEBGL_FORCE_F16_TEXTURES', true);
-        tf.env().set('WEBGL_CPU_FORWARD', true);
-        console.log('Using WebGL backend');
+        tf.env().set('WEBGL_FORCE_F16_TEXTURES', true)
+        tf.env().set('WEBGL_CPU_FORWARD', true)
+        console.log('Using WebGL backend')
       } catch (error) {
-        console.warn('WebGL backend failed, falling back to CPU:', error);
-        await tf.setBackend('cpu');
+        console.warn('WebGL backend failed, falling back to CPU:', error)
+        await tf.setBackend('cpu')
       }
     } else {
-      await tf.setBackend('cpu');
-      console.log('Using CPU backend');
+      await tf.setBackend('cpu')
+      console.log('Using CPU backend')
     }
-    
+
     // Import face-detection model dynamically
-    const faceDetection = await import('@tensorflow-models/face-detection');
-    
+    const faceDetection = await import('@tensorflow-models/face-detection')
+
     // Load face detection model (BlazeFace is lighter/faster)
     const modelConfig = {
       modelType: 'short',
       runtime: 'tfjs',
       maxFaces: 1
-    };
-    
-    console.log('Loading face detection model...');
+    }
+
+    console.log('Loading face detection model...')
     faceDetector = await faceDetection.createDetector(
       faceDetection.SupportedModels.BlazeFace,
       modelConfig
-    );
-    
-    console.log('TensorFlow and face detection initialized successfully');
-    focusTrackingInitialized = true;
-    return true;
+    )
+
+    console.log('TensorFlow and face detection initialized successfully')
+    focusTrackingInitialized = true
+    return true
   } catch (error) {
-    console.error('Failed to initialize TensorFlow:', error);
-    throw error;
+    console.error('Failed to initialize TensorFlow:', error)
+    throw error
   }
 }
 
@@ -148,7 +149,7 @@ function saveFocusSessions(sessions) {
     localStorage.setItem('focusSessions', JSON.stringify(sessions))
     focusSessionsCache = sessions
     console.log(`Saved ${sessions.length} focus sessions to storage`)
-    
+
     // Update dashboard with latest data
     updateDashboardWithFocusData(sessions)
   } catch (error) {
@@ -164,37 +165,44 @@ function saveNewFocusSession(session) {
     id: Date.now(), // Use timestamp as unique ID
     createdAt: new Date().toISOString()
   })
-  
+
   // Keep only the 100 most recent sessions
-  const trimmedSessions = sessions.sort((a, b) => new Date(b.createdAt) - new Date(a.createdAt)).slice(0, 100)
+  const trimmedSessions = sessions
+    .sort((a, b) => new Date(b.createdAt) - new Date(a.createdAt))
+    .slice(0, 100)
   saveFocusSessions(trimmedSessions)
-  
+
   return trimmedSessions
 }
 
 // Export focus sessions to a JSON file
 async function exportFocusSessions() {
-  const sessions = loadFocusSessions()
-  
-  if (sessions.length === 0) {
-    alert('No focus sessions to export')
-    return
+  try {
+    const sessions = loadAndUpdateFocusSessions()
+
+    if (sessions.length === 0) {
+      alert('No focus sessions to export')
+      return
+    }
+
+    const dataStr = JSON.stringify(sessions, null, 2)
+    const dataUri = 'data:application/json;charset=utf-8,' + encodeURIComponent(dataStr)
+
+    const exportFileDefaultName = `focus-sessions-${new Date().toISOString().slice(0, 10)}.json`
+
+    const linkElement = document.createElement('a')
+    linkElement.setAttribute('href', dataUri)
+    linkElement.setAttribute('download', exportFileDefaultName)
+    linkElement.style.display = 'none'
+    document.body.appendChild(linkElement) // Required for Firefox
+
+    linkElement.click()
+
+    document.body.removeChild(linkElement)
+  } catch (error) {
+    console.error('Error exporting focus sessions:', error)
+    alert('Failed to export focus sessions')
   }
-  
-  const dataStr = JSON.stringify(sessions, null, 2)
-  const dataUri = 'data:application/json;charset=utf-8,' + encodeURIComponent(dataStr)
-  
-  const exportFileDefaultName = `focus-sessions-${new Date().toISOString().slice(0, 10)}.json`
-  
-  const linkElement = document.createElement('a')
-  linkElement.setAttribute('href', dataUri)
-  linkElement.setAttribute('download', exportFileDefaultName)
-  linkElement.style.display = 'none'
-  document.body.appendChild(linkElement) // Required for Firefox
-  
-  linkElement.click()
-  
-  document.body.removeChild(linkElement)
 }
 
 // Import focus sessions from a JSON file
@@ -204,50 +212,86 @@ async function importFocusSessions(fileInputEvent) {
     if (!file) {
       return
     }
-    
+
     const reader = new FileReader()
-    
-    reader.onload = function(event) {
+
+    reader.onload = function (event) {
       try {
         const importedSessions = JSON.parse(event.target.result)
-        
+
         if (!Array.isArray(importedSessions)) {
           throw new Error('Invalid format: imported data is not an array')
         }
-        
-        const validSessions = importedSessions.filter(session => {
-          return session.startTime && session.endTime && typeof session.attentionScore === 'number'
+
+        const validSessions = importedSessions.filter((session) => {
+          return (
+            session.startTime &&
+            (session.endTime || session.sessionDuration) &&
+            typeof session.attentionScore === 'number'
+          )
         })
-        
+
         if (validSessions.length === 0) {
           throw new Error('No valid focus sessions found in the imported file')
         }
-        
+
+        // Get existing sessions
+        let existingSessions = []
+        try {
+          const savedData = localStorage.getItem('focusSessions')
+          if (savedData) {
+            existingSessions = JSON.parse(savedData)
+          }
+        } catch (e) {
+          console.warn('Could not load existing sessions, starting fresh')
+          existingSessions = []
+        }
+
         // Merge with existing sessions, avoiding duplicates by ID
-        const existingSessions = loadFocusSessions()
-        const existingIds = new Set(existingSessions.map(s => s.id))
-        
+        const existingIds = new Set(existingSessions.map((s) => s.id))
+
         const newSessions = [
           ...existingSessions,
-          ...validSessions.filter(s => !existingIds.has(s.id))
+          ...validSessions.filter((s) => !existingIds.has(s.id))
         ]
-        
-        saveFocusSessions(newSessions)
-        
-        alert(`Successfully imported ${validSessions.length} focus sessions`)
-        
-        // Update UI
-        updateDashboardWithFocusData(newSessions)
+
+        // Sort and limit to 50 sessions
+        const finalSessions = newSessions
+          .sort((a, b) => new Date(b.startTime) - new Date(a.startTime))
+          .slice(0, 50)
+
+        // Save to localStorage
+        localStorage.setItem('focusSessions', JSON.stringify(finalSessions))
+
+        // Update the UI
+        updateDashboardWithFocusData(finalSessions)
+
+        // Show success message
+        const notification = document.createElement('div')
+        notification.className = 'notification'
+        notification.textContent = `Successfully imported ${validSessions.length} focus sessions`
+        document.body.appendChild(notification)
+
+        setTimeout(() => {
+          notification.classList.add('show')
+        }, 10)
+
+        setTimeout(() => {
+          notification.classList.remove('show')
+          setTimeout(() => {
+            document.body.removeChild(notification)
+          }, 300)
+        }, 3000)
       } catch (error) {
         console.error('Error parsing imported file:', error)
         alert(`Error importing focus sessions: ${error.message}`)
       }
     }
-    
-    reader.onerror = function() {
+
+    reader.onerror = function () {
       alert('Error reading the file')
     }
-    
+
     reader.readAsText(file)
   } catch (error) {
     console.error('Error importing focus sessions:', error)
@@ -906,20 +950,20 @@ const classroomService = {
 // TensorFlow-based Focus Tracking
 class FocusTracker {
   constructor() {
-    this.isTracking = false;
-    this.focusData = this.resetFocusData();
-    this.videoElement = null;
-    this.canvasElement = null;
-    this.canvasContext = null;
-    this.trackingInterval = null;
-    this.timerInterval = null;
-    this.blinkThreshold = 0.3;
-    this.modelLoaded = false;
-    this.domElements = {};
-    this.savedSessions = [];
-    this.loadSavedSessions();
+    this.isTracking = false
+    this.focusData = this.resetFocusData()
+    this.videoElement = null
+    this.canvasElement = null
+    this.canvasContext = null
+    this.trackingInterval = null
+    this.timerInterval = null
+    this.blinkThreshold = 0.3
+    this.modelLoaded = false
+    this.domElements = {}
+    this.savedSessions = []
+    this.loadSavedSessions()
   }
-  
+
   resetFocusData() {
     return {
       startTime: null,
@@ -931,78 +975,78 @@ class FocusTracker {
       blinkEvents: [],
       faceDetections: [],
       focusScoreHistory: []
-    };
+    }
   }
-  
+
   loadSavedSessions() {
     try {
-      const savedData = localStorage.getItem('focusSessions');
+      const savedData = localStorage.getItem('focusSessions')
       if (savedData) {
-        this.savedSessions = JSON.parse(savedData);
-        console.log(`Loaded ${this.savedSessions.length} focus sessions from storage`);
+        this.savedSessions = JSON.parse(savedData)
+        console.log(`Loaded ${this.savedSessions.length} focus sessions from storage`)
       }
     } catch (error) {
-      console.error('Error loading saved sessions:', error);
-      this.savedSessions = [];
+      console.error('Error loading saved sessions:', error)
+      this.savedSessions = []
     }
   }
-  
+
   saveSessions() {
     try {
-      localStorage.setItem('focusSessions', JSON.stringify(this.savedSessions));
-      console.log(`Saved ${this.savedSessions.length} focus sessions to storage`);
-      
+      localStorage.setItem('focusSessions', JSON.stringify(this.savedSessions))
+      console.log(`Saved ${this.savedSessions.length} focus sessions to storage`)
+
       // Update dashboard if available
-      updateDashboardWithFocusData(this.savedSessions);
+      updateDashboardWithFocusData(this.savedSessions)
     } catch (error) {
-      console.error('Error saving sessions:', error);
+      console.error('Error saving sessions:', error)
     }
   }
-  
+
   async initialize(containerElement) {
     if (!containerElement) {
-      console.error('No container element provided for focus tracker');
-      return false;
+      console.error('No container element provided for focus tracker')
+      return false
     }
-    
+
     try {
       // Create UI
-      this.createUI(containerElement);
-      
+      this.createUI(containerElement)
+
       // Setup canvas for visualization
-      this.setupCanvas();
-      
+      this.setupCanvas()
+
       // Show loading state
-      this.showLoadingState(true);
-      
+      this.showLoadingState(true)
+
       // Initialize TensorFlow
       try {
-        await initializeTensorFlow();
-        this.modelLoaded = true;
+        await initializeTensorFlow()
+        this.modelLoaded = true
       } catch (error) {
-        console.error('Failed to initialize TensorFlow:', error);
-        this.showLoadingState(false, error.message);
-        return false;
+        console.error('Failed to initialize TensorFlow:', error)
+        this.showLoadingState(false, error.message)
+        return false
       }
-      
+
       // Setup event listeners
-      this.setupEventListeners();
-      
+      this.setupEventListeners()
+
       // Hide loading state and show main content
-      this.showLoadingState(false);
-      
+      this.showLoadingState(false)
+
       // Display previous sessions
-      this.updateSessionsList();
-      
-      return true;
+      this.updateSessionsList()
+
+      return true
     } catch (error) {
-      console.error('Error initializing focus tracker:', error);
-      this.showError(`Failed to initialize focus tracking: ${error.message}`);
-      this.showLoadingState(false, error.message);
-      return false;
+      console.error('Error initializing focus tracker:', error)
+      this.showError(`Failed to initialize focus tracking: ${error.message}`)
+      this.showLoadingState(false, error.message)
+      return false
     }
   }
-  
+
   createUI(containerElement) {
     containerElement.innerHTML = `
       <div class="focus-tracker">
@@ -1093,11 +1137,11 @@ class FocusTracker {
         
         <div id="focus-error" class="focus-error" style="display: none;"></div>
       </div>
-    `;
-    
+    `
+
     // Store references to DOM elements
-    this.videoElement = document.getElementById('focus-video');
-    this.canvasElement = document.getElementById('focus-overlay');
+    this.videoElement = document.getElementById('focus-video')
+    this.canvasElement = document.getElementById('focus-overlay')
     this.domElements = {
       modelLoading: document.getElementById('model-loading-status'),
       modelError: document.getElementById('model-error'),
@@ -1113,92 +1157,103 @@ class FocusTracker {
       sessionsList: document.getElementById('focus-sessions-list'),
       exportButton: document.getElementById('export-sessions'),
       importInput: document.getElementById('import-sessions')
-    };
+    }
   }
-  
+
   setupCanvas() {
     if (this.canvasElement) {
-      this.canvasContext = this.canvasElement.getContext('2d');
+      this.canvasContext = this.canvasElement.getContext('2d')
     }
   }
-  
+
   showLoadingState(isLoading, errorMessage = '') {
-    if (!this.domElements.modelLoading || !this.domElements.modelError || !this.domElements.mainContent) {
-      return;
+    if (
+      !this.domElements.modelLoading ||
+      !this.domElements.modelError ||
+      !this.domElements.mainContent
+    ) {
+      return
     }
-    
+
     if (isLoading) {
-      this.domElements.modelLoading.style.display = 'flex';
-      this.domElements.modelError.style.display = 'none';
-      this.domElements.mainContent.style.display = 'none';
+      this.domElements.modelLoading.style.display = 'flex'
+      this.domElements.modelError.style.display = 'none'
+      this.domElements.mainContent.style.display = 'none'
     } else if (errorMessage) {
-      this.domElements.modelLoading.style.display = 'none';
-      this.domElements.modelError.style.display = 'block';
-      this.domElements.mainContent.style.display = 'none';
-      
+      this.domElements.modelLoading.style.display = 'none'
+      this.domElements.modelError.style.display = 'block'
+      this.domElements.mainContent.style.display = 'none'
+
       this.domElements.modelError.innerHTML = `
         <p>Error initializing focus tracking: ${errorMessage}</p>
         <button id="retry-model-loading" class="primary-button">
           <span class="material-icons">refresh</span>
           Retry
         </button>
-      `;
-      
+      `
+
       document.getElementById('retry-model-loading')?.addEventListener('click', () => {
-        this.showLoadingState(true);
-        initializeTensorFlow().then(() => {
-          this.modelLoaded = true;
-          this.showLoadingState(false);
-        }).catch(error => {
-          this.showLoadingState(false, error.message);
-        });
-      });
+        this.showLoadingState(true)
+        initializeTensorFlow()
+          .then(() => {
+            this.modelLoaded = true
+            this.showLoadingState(false)
+          })
+          .catch((error) => {
+            this.showLoadingState(false, error.message)
+          })
+      })
     } else {
-      this.domElements.modelLoading.style.display = 'none';
-      this.domElements.modelError.style.display = 'none';
-      this.domElements.mainContent.style.display = 'block';
+      this.domElements.modelLoading.style.display = 'none'
+      this.domElements.modelError.style.display = 'none'
+      this.domElements.mainContent.style.display = 'block'
     }
   }
-  
+
   setupEventListeners() {
     // Start tracking button
-    this.domElements.startButton?.addEventListener('click', () => this.startTracking());
-    
+    this.domElements.startButton?.addEventListener('click', () => this.startTracking())
+
     // Stop tracking button
-    this.domElements.stopButton?.addEventListener('click', () => this.stopTracking());
-    
+    this.domElements.stopButton?.addEventListener('click', () => this.stopTracking())
+
     // Export sessions button
-    this.domElements.exportButton?.addEventListener('click', () => this.exportSessions());
-    
+    this.domElements.exportButton?.addEventListener('click', () => this.exportSessions())
+
     // Import sessions input
-    this.domElements.importInput?.addEventListener('change', (e) => this.importSessions(e));
+    this.domElements.importInput?.addEventListener('change', (e) => this.importSessions(e))
   }
-  
+
   updateSessionsList() {
-    const sessionsList = this.domElements.sessionsList;
-    if (!sessionsList) return;
-    
+    const sessionsList = this.domElements.sessionsList
+    if (!sessionsList) return
+
     if (this.savedSessions.length === 0) {
-      sessionsList.innerHTML = `<div class="empty-state">No recent focus sessions found</div>`;
-      return;
+      sessionsList.innerHTML = `<div class="empty-state">No recent focus sessions found</div>`
+      return
     }
-    
+
     // Sort sessions by date, newest first
-    const sortedSessions = [...this.savedSessions].sort((a, b) => 
-      new Date(b.startTime || b.createdAt || 0) - new Date(a.startTime || a.createdAt || 0)
-    );
-    
+    const sortedSessions = [...this.savedSessions].sort(
+      (a, b) =>
+        new Date(b.startTime || b.createdAt || 0) - new Date(a.startTime || a.createdAt || 0)
+    )
+
     // Take only the 5 most recent sessions
-    const recentSessions = sortedSessions.slice(0, 5);
-    
-    sessionsList.innerHTML = recentSessions.map(session => {
-      const startTime = new Date(session.startTime);
-      const endTime = session.endTime ? new Date(session.endTime) : new Date();
-      const duration = Math.floor((endTime - startTime) / 1000 / 60); // Duration in minutes
-      const formattedDate = startTime.toLocaleDateString();
-      const formattedTime = startTime.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
-      
-      return `
+    const recentSessions = sortedSessions.slice(0, 5)
+
+    sessionsList.innerHTML = recentSessions
+      .map((session) => {
+        const startTime = new Date(session.startTime)
+        const endTime = session.endTime ? new Date(session.endTime) : new Date()
+        const duration = Math.floor((endTime - startTime) / 1000 / 60) // Duration in minutes
+        const formattedDate = startTime.toLocaleDateString()
+        const formattedTime = startTime.toLocaleTimeString([], {
+          hour: '2-digit',
+          minute: '2-digit'
+        })
+
+        return `
         <div class="session-item">
           <div class="session-date">${formattedDate}, ${formattedTime}</div>
           <div class="session-details">
@@ -1206,42 +1261,43 @@ class FocusTracker {
             <div class="session-focus">Score: ${Math.round(session.attentionScore)}</div>
           </div>
         </div>
-      `;
-    }).join('');
+      `
+      })
+      .join('')
   }
-  
+
   async startTracking() {
-    if (this.isTracking) return;
-    
+    if (this.isTracking) return
+
     try {
       // Request camera access
-      await this.initializeCamera();
-      
+      await this.initializeCamera()
+
       // Reset focus data
-      this.focusData = this.resetFocusData();
-      this.focusData.startTime = Date.now();
-      
+      this.focusData = this.resetFocusData()
+      this.focusData.startTime = Date.now()
+
       // Update UI
-      this.domElements.startButton.disabled = true;
-      this.domElements.stopButton.disabled = false;
+      this.domElements.startButton.disabled = true
+      this.domElements.stopButton.disabled = false
       if (this.domElements.faceIndicator) {
-        this.domElements.faceIndicator.classList.remove('face-detected', 'no-face-detected');
+        this.domElements.faceIndicator.classList.remove('face-detected', 'no-face-detected')
       }
-      this.isTracking = true;
-      
+      this.isTracking = true
+
       // Start tracking loop
-      this.trackingInterval = setInterval(() => this.trackFocus(), 200);
-      
+      this.trackingInterval = setInterval(() => this.trackFocus(), 200)
+
       // Start session timer
-      this.timerInterval = setInterval(() => this.updateSessionTime(), 1000);
-      
-      console.log('Focus tracking started');
+      this.timerInterval = setInterval(() => this.updateSessionTime(), 1000)
+
+      console.log('Focus tracking started')
     } catch (error) {
-      console.error('Failed to start focus tracking:', error);
-      this.showError(`Failed to start tracking: ${error.message}`);
+      console.error('Failed to start focus tracking:', error)
+      this.showError(`Failed to start tracking: ${error.message}`)
     }
   }
-  
+
   async initializeCamera() {
     try {
       const constraints = {
@@ -1250,67 +1306,67 @@ class FocusTracker {
           width: { ideal: 640 },
           height: { ideal: 480 }
         }
-      };
-      
-      const stream = await navigator.mediaDevices.getUserMedia(constraints);
-      this.videoElement.srcObject = stream;
-      
+      }
+
+      const stream = await navigator.mediaDevices.getUserMedia(constraints)
+      this.videoElement.srcObject = stream
+
       // Wait for video to be ready
       return new Promise((resolve) => {
         this.videoElement.onloadedmetadata = () => {
-          this.videoElement.play();
-          resolve(true);
-        };
-      });
+          this.videoElement.play()
+          resolve(true)
+        }
+      })
     } catch (error) {
-      console.error('Failed to initialize camera:', error);
-      throw error;
+      console.error('Failed to initialize camera:', error)
+      throw error
     }
   }
-  
+
   stopCamera() {
     if (this.videoElement && this.videoElement.srcObject) {
-      const tracks = this.videoElement.srcObject.getTracks();
-      tracks.forEach(track => track.stop());
-      this.videoElement.srcObject = null;
+      const tracks = this.videoElement.srcObject.getTracks()
+      tracks.forEach((track) => track.stop())
+      this.videoElement.srcObject = null
     }
   }
-  
+
   stopTracking() {
-    if (!this.isTracking) return;
-    
+    if (!this.isTracking) return
+
     // Stop video stream
-    this.stopCamera();
-    
+    this.stopCamera()
+
     // Stop intervals
-    clearInterval(this.trackingInterval);
-    clearInterval(this.timerInterval);
-    
+    clearInterval(this.trackingInterval)
+    clearInterval(this.timerInterval)
+
     // Update focus data
-    this.focusData.endTime = Date.now();
-    this.focusData.sessionDuration = (this.focusData.endTime - this.focusData.startTime) / 1000; // in seconds
-    
+    this.focusData.endTime = Date.now()
+    this.focusData.sessionDuration = (this.focusData.endTime - this.focusData.startTime) / 1000 // in seconds
+
     // Update UI
-    this.domElements.startButton.disabled = false;
-    this.domElements.stopButton.disabled = true;
-    this.isTracking = false;
-    
+    this.domElements.startButton.disabled = false
+    this.domElements.stopButton.disabled = true
+    this.isTracking = false
+
     // Clear canvas
     if (this.canvasContext) {
-      this.canvasContext.clearRect(0, 0, this.canvasElement.width, this.canvasElement.height);
+      this.canvasContext.clearRect(0, 0, this.canvasElement.width, this.canvasElement.height)
     }
-    
+
     // Save session data
-    this.saveSession();
-    
+    this.saveSession()
+
     // Final update
-    this.updateStats();
-    
-    console.log('Focus tracking stopped');
-    
-    return this.focusData;
+    this.updateStats()
+
+    console.log('Focus tracking stopped')
+
+    return this.focusData
   }
-  
+
   saveSession() {
     // Only save sessions that lasted at least 30 seconds
     if (this.focusData.sessionDuration >= 30) {
@@ -1318,403 +1374,406 @@ class FocusTracker {
         ...this.focusData,
         id: Date.now(),
         createdAt: new Date().toISOString()
-      };
-      
-      this.savedSessions.push(sessionToSave);
-      
+      }
+
+      this.savedSessions.push(sessionToSave)
+
       // Keep only the 50 most recent sessions
       if (this.savedSessions.length > 50) {
         this.savedSessions = this.savedSessions
           .sort((a, b) => new Date(b.createdAt) - new Date(a.createdAt))
-          .slice(0, 50);
+          .slice(0, 50)
       }
-      
+
       // Save to localStorage
-      this.saveSessions();
+      this.saveSessions()
     }
-    
+
     // Update session list
-    this.updateSessionsList();
+    this.updateSessionsList()
   }
-  
+
   async trackFocus() {
-    if (!this.isTracking || !this.modelLoaded || !faceDetector) return;
-    
+    if (!this.isTracking || !this.modelLoaded || !faceDetector) return
+
     try {
       // Detect faces
       if (!this.videoElement || this.videoElement.readyState < 2) {
-        return;
+        return
       }
-      
-      const faces = await faceDetector.estimateFaces(this.videoElement);
-      const faceDetected = faces && faces.length > 0;
-      
+
+      const faces = await faceDetector.estimateFaces(this.videoElement)
+      const faceDetected = faces && faces.length > 0
+
       // Update face detection indicator
-      this.updateFaceIndicator(faceDetected);
-      
+      this.updateFaceIndicator(faceDetected)
+
       if (faceDetected) {
         // Draw face on canvas
-        this.drawFaceLandmarks(faces[0]);
-        
+        this.drawFaceLandmarks(faces[0])
+
         // Record face detection
         this.focusData.faceDetections.push({
           timestamp: Date.now()
-        });
-        
+        })
+
         // Estimate eye openness and blink detection
-        const blinkData = this.estimateBlinkFromFace(faces[0]);
-        
+        const blinkData = this.estimateBlinkFromFace(faces[0])
+
         // Record blink event if blinking
         if (blinkData.isBlinking) {
           this.focusData.blinkEvents.push({
             timestamp: Date.now(),
             eyeOpenness: blinkData.eyeOpenness
-          });
+          })
         }
-        
+
         // Calculate blink rate (blinks per minute)
-        const sessionDurationMinutes = (Date.now() - this.focusData.startTime) / 60000;
-        this.focusData.blinkRate = this.focusData.blinkEvents.length / Math.max(sessionDurationMinutes, 0.1);
-        
+        const sessionDurationMinutes = (Date.now() - this.focusData.startTime) / 60000
+        this.focusData.blinkRate =
+          this.focusData.blinkEvents.length / Math.max(sessionDurationMinutes, 0.1)
+
         // Update attention score based on blink rate
-        this.updateAttentionScore(blinkData.eyeOpenness, blinkData.isBlinking);
+        this.updateAttentionScore(blinkData.eyeOpenness, blinkData.isBlinking)
       } else {
         // No face detected - record distraction
-        this.recordDistraction();
-        
+        this.recordDistraction()
+
         // Clear canvas when no face is detected
         if (this.canvasContext) {
-          this.canvasContext.clearRect(0, 0, this.canvasElement.width, this.canvasElement.height);
+          this.canvasContext.clearRect(0, 0, this.canvasElement.width, this.canvasElement.height)
         }
       }
-      
+
       // Update stats display
-      this.updateStats();
-      
+      this.updateStats()
     } catch (error) {
-      console.error('Error during focus tracking:', error);
+      console.error('Error during focus tracking:', error)
     }
   }
-  
+
   estimateBlinkFromFace(face) {
     // Default values
-    let isBlinking = false;
-    let eyeOpenness = 1.0;
-    
+    let isBlinking = false
+    let eyeOpenness = 1.0
+
     // BlazeFace may not provide detailed eye landmarks
     // We'll approximate using the face topology and probability
-    
+
     // If probability is low, consider it a blink (face not fully visible/looking away)
     if (face.box && face.box.probability) {
       // Low probability may indicate looking away or eyes closed
       if (face.box.probability < 0.85) {
-        isBlinking = true;
-        eyeOpenness = face.box.probability * 0.5;
+        isBlinking = true
+        eyeOpenness = face.box.probability * 0.5
       }
     }
-    
-    return { isBlinking, eyeOpenness };
+
+    return { isBlinking, eyeOpenness }
   }
-  
+
   drawFaceLandmarks(face) {
-    if (!this.canvasContext || !face) return;
-    
+    if (!this.canvasContext || !face) return
+
     // Clear canvas
-    this.canvasContext.clearRect(0, 0, this.canvasElement.width, this.canvasElement.height);
-    
+    this.canvasContext.clearRect(0, 0, this.canvasElement.width, this.canvasElement.height)
+
     // Draw bounding box if available
     if (face.box) {
-      const box = face.box;
-      this.canvasContext.strokeStyle = '#00ff00';
-      this.canvasContext.lineWidth = 2;
-      
+      const box = face.box
+      this.canvasContext.strokeStyle = '#00ff00'
+      this.canvasContext.lineWidth = 2
+
       // Check if the box uses xMin,yMin format or x,y,width,height format
       if ('xMin' in box && 'yMin' in box && 'width' in box && 'height' in box) {
-        this.canvasContext.strokeRect(box.xMin, box.yMin, box.width, box.height);
+        this.canvasContext.strokeRect(box.xMin, box.yMin, box.width, box.height)
       } else if ('x' in box && 'y' in box && 'width' in box && 'height' in box) {
-        this.canvasContext.strokeRect(box.x, box.y, box.width, box.height);
+        this.canvasContext.strokeRect(box.x, box.y, box.width, box.height)
       }
     }
-    
+
     // Draw keypoints if available
     if (face.keypoints && face.keypoints.length > 0) {
-      face.keypoints.forEach(keypoint => {
-        this.canvasContext.fillStyle = '#00ffff';
-        this.canvasContext.beginPath();
-        this.canvasContext.arc(keypoint.x, keypoint.y, 3, 0, 2 * Math.PI);
-        this.canvasContext.fill();
-      });
+      face.keypoints.forEach((keypoint) => {
+        this.canvasContext.fillStyle = '#00ffff'
+        this.canvasContext.beginPath()
+        this.canvasContext.arc(keypoint.x, keypoint.y, 3, 0, 2 * Math.PI)
+        this.canvasContext.fill()
+      })
     }
   }
-  
+
   updateAttentionScore(eyeOpenness, isBlinking) {
     // Current attention score
-    let score = this.focusData.attentionScore;
-    
+    let score = this.focusData.attentionScore
+
     // Factors affecting attention score
     if (!isBlinking) {
       // Normal eye state - gradually increase score if in healthy blink rate range
       if (this.focusData.blinkRate >= 10 && this.focusData.blinkRate <= 25) {
         // Healthy blink rate (10-25 blinks per minute)
-        score = Math.min(score + 0.2, 100);
+        score = Math.min(score + 0.2, 100)
       } else if (this.focusData.blinkRate < 10) {
         // Too few blinks - potential staring, slight decrease
-        score = Math.max(score - 0.1, 40);
+        score = Math.max(score - 0.1, 40)
       } else if (this.focusData.blinkRate > 25) {
         // Too many blinks - potential fatigue
-        score = Math.max(score - 0.2, 20);
+        score = Math.max(score - 0.2, 20)
       }
     }
-    
+
     // Record score in history
     this.focusData.focusScoreHistory.push({
       timestamp: Date.now(),
       score: score
-    });
-    
+    })
+
     // Update score
-    this.focusData.attentionScore = score;
+    this.focusData.attentionScore = score
   }
-  
+
   recordDistraction() {
     // Only count as distraction if we previously detected a face
     if (this.focusData.faceDetections.length > 0) {
-      const lastDetection = this.focusData.faceDetections[this.focusData.faceDetections.length - 1];
-      const timeSinceLastDetection = Date.now() - lastDetection.timestamp;
-      
+      const lastDetection = this.focusData.faceDetections[this.focusData.faceDetections.length - 1]
+      const timeSinceLastDetection = Date.now() - lastDetection.timestamp
+
       // If face was detected recently (within 2 seconds) but now gone, count as distraction
       if (timeSinceLastDetection < 2000) {
-        this.focusData.distractions++;
-        
+        this.focusData.distractions++
+
         // Reduce attention score for distraction
-        this.focusData.attentionScore = Math.max(this.focusData.attentionScore - 5, 0);
-        
+        this.focusData.attentionScore = Math.max(this.focusData.attentionScore - 5, 0)
+
         // Record score in history
         this.focusData.focusScoreHistory.push({
           timestamp: Date.now(),
           score: this.focusData.attentionScore
-        });
+        })
       }
     }
   }
-  
+
   updateFaceIndicator(faceDetected) {
-    if (!this.domElements.faceIndicator) return;
-    
-    this.domElements.faceIndicator.classList.remove('face-detected', 'no-face-detected');
-    this.domElements.faceIndicator.classList.add(faceDetected ? 'face-detected' : 'no-face-detected');
+    if (!this.domElements.faceIndicator) return
+
+    this.domElements.faceIndicator.classList.remove('face-detected', 'no-face-detected')
+    this.domElements.faceIndicator.classList.add(
+      faceDetected ? 'face-detected' : 'no-face-detected'
+    )
   }
-  
+
   updateStats() {
     // Update focus score
     if (this.domElements.focusScore) {
-      this.domElements.focusScore.textContent = Math.round(this.focusData.attentionScore);
+      this.domElements.focusScore.textContent = Math.round(this.focusData.attentionScore)
     }
-    
+
     // Update blink rate
     if (this.domElements.blinkRate) {
-      this.domElements.blinkRate.textContent = Math.round(this.focusData.blinkRate);
+      this.domElements.blinkRate.textContent = Math.round(this.focusData.blinkRate)
     }
-    
+
     // Update distraction count
     if (this.domElements.distractionCount) {
-      this.domElements.distractionCount.textContent = this.focusData.distractions;
+      this.domElements.distractionCount.textContent = this.focusData.distractions
     }
   }
-  
+
   updateSessionTime() {
-    if (!this.domElements.sessionTime) return;
-    
-    const sessionDurationSeconds = Math.floor((Date.now() - this.focusData.startTime) / 1000);
-    const minutes = Math.floor(sessionDurationSeconds / 60).toString().padStart(2, '0');
-    const seconds = (sessionDurationSeconds % 60).toString().padStart(2, '0');
-    this.domElements.sessionTime.textContent = `${minutes}:${seconds}`;
+    if (!this.domElements.sessionTime) return
+
+    const sessionDurationSeconds = Math.floor((Date.now() - this.focusData.startTime) / 1000)
+    const minutes = Math.floor(sessionDurationSeconds / 60)
+      .toString()
+      .padStart(2, '0')
+    const seconds = (sessionDurationSeconds % 60).toString().padStart(2, '0')
+    this.domElements.sessionTime.textContent = `${minutes}:${seconds}`
   }
-  
+
   exportSessions() {
     if (this.savedSessions.length === 0) {
-      this.showError('No focus sessions to export');
-      return;
+      this.showError('No focus sessions to export')
+      return
     }
-    
-    const dataStr = JSON.stringify(this.savedSessions, null, 2);
-    const dataUri = 'data:application/json;charset=utf-8,' + encodeURIComponent(dataStr);
-    
-    const exportFileDefaultName = `focus-sessions-${new Date().toISOString().slice(0, 10)}.json`;
-    
-    const linkElement = document.createElement('a');
-    linkElement.setAttribute('href', dataUri);
-    linkElement.setAttribute('download', exportFileDefaultName);
-    linkElement.style.display = 'none';
-    document.body.appendChild(linkElement); // Required for Firefox
-    
-    linkElement.click();
-    
-    document.body.removeChild(linkElement);
+
+    const dataStr = JSON.stringify(this.savedSessions, null, 2)
+    const dataUri = 'data:application/json;charset=utf-8,' + encodeURIComponent(dataStr)
+
+    const exportFileDefaultName = `focus-sessions-${new Date().toISOString().slice(0, 10)}.json`
+
+    const linkElement = document.createElement('a')
+    linkElement.setAttribute('href', dataUri)
+    linkElement.setAttribute('download', exportFileDefaultName)
+    linkElement.style.display = 'none'
+    document.body.appendChild(linkElement) // Required for Firefox
+
+    linkElement.click()
+
+    document.body.removeChild(linkElement)
   }
-  
+
   importSessions(fileInputEvent) {
     try {
-      const file = fileInputEvent.target.files[0];
+      const file = fileInputEvent.target.files[0]
       if (!file) {
-        return;
+        return
       }
-      
-      const reader = new FileReader();
-      
+
+      const reader = new FileReader()
+
       reader.onload = (event) => {
         try {
-          const importedSessions = JSON.parse(event.target.result);
-          
+          const importedSessions = JSON.parse(event.target.result)
+
           if (!Array.isArray(importedSessions)) {
-            throw new Error('Invalid format: imported data is not an array');
+            throw new Error('Invalid format: imported data is not an array')
           }
-          
-          const validSessions = importedSessions.filter(session => {
-            return session.startTime && (session.endTime || session.sessionDuration) && 
-                  typeof session.attentionScore === 'number';
-          });
-          
+
+          const validSessions = importedSessions.filter((session) => {
+            return (
+              session.startTime &&
+              (session.endTime || session.sessionDuration) &&
+              typeof session.attentionScore === 'number'
+            )
+          })
+
           if (validSessions.length === 0) {
-            throw new Error('No valid focus sessions found in the imported file');
+            throw new Error('No valid focus sessions found in the imported file')
           }
-          
+
           // Merge with existing sessions, avoiding duplicates by ID
-          const existingIds = new Set(this.savedSessions.map(s => s.id));
-          
+          const existingIds = new Set(this.savedSessions.map((s) => s.id))
+
           this.savedSessions = [
             ...this.savedSessions,
-            ...validSessions.filter(s => !existingIds.has(s.id))
-          ];
-          
+            ...validSessions.filter((s) => !existingIds.has(s.id))
+          ]
+
           // Sort and limit to 50 sessions
           this.savedSessions = this.savedSessions
             .sort((a, b) => new Date(b.startTime) - new Date(a.startTime))
-            .slice(0, 50);
-          
-          this.saveSessions();
-          this.updateSessionsList();
-          
-          this.showNotification(`Successfully imported ${validSessions.length} focus sessions`);
+            .slice(0, 50)
+
+          this.saveSessions()
+          this.updateSessionsList()
+
+          this.showNotification(`Successfully imported ${validSessions.length} focus sessions`)
         } catch (error) {
-          console.error('Error parsing imported file:', error);
-          this.showError(`Error importing focus sessions: ${error.message}`);
+          console.error('Error parsing imported file:', error)
+          this.showError(`Error importing focus sessions: ${error.message}`)
         }
-      };
-      
+      }
+
       reader.onerror = () => {
-        this.showError('Error reading the file');
-      };
-      
-      reader.readAsText(file);
+        this.showError('Error reading the file')
+      }
+
+      reader.readAsText(file)
     } catch (error) {
-      console.error('Error importing focus sessions:', error);
-      this.showError(`Error importing focus sessions: ${error.message}`);
+      console.error('Error importing focus sessions:', error)
+      this.showError(`Error importing focus sessions: ${error.message}`)
     }
   }
-  
+
   showError(message) {
-    if (!this.domElements.errorContainer) return;
-    
-    this.domElements.errorContainer.textContent = message;
-    this.domElements.errorContainer.style.display = 'block';
-    
+    if (!this.domElements.errorContainer) return
+
+    this.domElements.errorContainer.textContent = message
+    this.domElements.errorContainer.style.display = 'block'
+
     setTimeout(() => {
-      this.domElements.errorContainer.style.display = 'none';
-    }, 5000);
+      this.domElements.errorContainer.style.display = 'none'
+    }, 5000)
   }
-  
+
   showNotification(message) {
-    const notification = document.createElement('div');
-    notification.className = 'notification';
-    notification.textContent = message;
-    
-    document.body.appendChild(notification);
-    
+    const notification = document.createElement('div')
+    notification.className = 'notification'
+    notification.textContent = message
+
+    document.body.appendChild(notification)
+
     setTimeout(() => {
-      notification.classList.add('show');
-    }, 10);
-    
+      notification.classList.add('show')
+    }, 10)
+
     setTimeout(() => {
-      notification.classList.remove('show');
+      notification.classList.remove('show')
       setTimeout(() => {
-        document.body.removeChild(notification);
-      }, 300);
-    }, 3000);
+        document.body.removeChild(notification)
+      }, 300)
+    }, 3000)
   }
 }
 
-
 function updateDashboardWithFocusData(sessions) {
-  if (!sessions || sessions.length === 0) return;
-  
+  if (!sessions || sessions.length === 0) return
+
   // Calculate total study time (in hours)
   const totalStudyTimeHours = sessions.reduce((total, session) => {
-    const duration = session.sessionDuration || 
-      ((session.endTime - session.startTime) / 1000 / 3600);
-    return total + duration;
-  }, 0);
-  
+    const duration = session.sessionDuration || (session.endTime - session.startTime) / 1000 / 3600
+    return total + duration
+  }, 0)
+
   // Calculate average focus score
-  const avgFocusScore = sessions.reduce((total, session) => 
-    total + session.attentionScore, 0) / sessions.length;
-  
+  const avgFocusScore =
+    sessions.reduce((total, session) => total + session.attentionScore, 0) / sessions.length
+
   // Find completed modules (sessions with score > 70)
-  const completedModules = sessions.filter(session => session.attentionScore > 70).length;
-  
+  const completedModules = sessions.filter((session) => session.attentionScore > 70).length
+
   // Update dashboard UI if elements exist
-  const studyTimeElement = document.querySelector('.stat-card:nth-child(1) .stat-value');
-  const avgFocusElement = document.querySelector('.stat-card:nth-child(2) .stat-value');
-  const modulesElement = document.querySelector('.stat-card:nth-child(3) .stat-value');
-  
+  const studyTimeElement = document.querySelector('.stat-card:nth-child(1) .stat-value')
+  const avgFocusElement = document.querySelector('.stat-card:nth-child(2) .stat-value')
+  const modulesElement = document.querySelector('.stat-card:nth-child(3) .stat-value')
+
   if (studyTimeElement) {
-    studyTimeElement.textContent = `${totalStudyTimeHours.toFixed(1)}h`;
+    studyTimeElement.textContent = `${totalStudyTimeHours.toFixed(1)}h`
   }
-  
+
   if (avgFocusElement) {
-    avgFocusElement.textContent = `${Math.round(avgFocusScore)}%`;
+    avgFocusElement.textContent = `${Math.round(avgFocusScore)}%`
   }
-  
+
   if (modulesElement) {
-    modulesElement.textContent = completedModules.toString();
+    modulesElement.textContent = completedModules.toString()
   }
-  
+
   // Update recent sessions list in dashboard
-  updateRecentSessionsList(sessions);
-  
-  // Update focus chart if it exists
-  updateFocusChart(sessions);
+  updateRecentSessionsList(sessions)
 }
 
 // Update recent sessions list in dashboard
 function updateRecentSessionsList(sessions) {
-  const recentSessionsList = document.querySelector('.sessions-list');
-  if (!recentSessionsList) return;
-  
+  const recentSessionsList = document.querySelector('.sessions-list')
+  if (!recentSessionsList) return
+
   if (sessions.length === 0) {
     recentSessionsList.innerHTML = `
       <p class="empty-state">
         No recent study sessions found. Start tracking your focus to see data here.
       </p>
-    `;
-    return;
+    `
+    return
   }
-  
+
   // Sort sessions by date, newest first
-  const sortedSessions = [...sessions].sort((a, b) => 
-    new Date(b.startTime || b.createdAt || 0) - new Date(a.startTime || a.createdAt || 0)
-  );
-  
+  const sortedSessions = [...sessions].sort(
+    (a, b) => new Date(b.startTime || b.createdAt || 0) - new Date(a.startTime || a.createdAt || 0)
+  )
+
   // Take the 5 most recent sessions
-  const recentSessions = sortedSessions.slice(0, 5);
-  
-  recentSessionsList.innerHTML = recentSessions.map(session => {
-    const startTime = new Date(session.startTime);
-    const formattedDate = startTime.toLocaleDateString();
-    const formattedTime = startTime.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
-    const duration = Math.round((session.endTime - session.startTime) / 1000 / 60); // Duration in minutes
-    
-    return `
+  const recentSessions = sortedSessions.slice(0, 5)
+
+  recentSessionsList.innerHTML = recentSessions
+    .map((session) => {
+      const startTime = new Date(session.startTime)
+      const formattedDate = startTime.toLocaleDateString()
+      const formattedTime = startTime.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })
+      const duration = Math.round((session.endTime - session.startTime) / 1000 / 60) // Duration in minutes
+
+      return `
       <div class="session-item">
         <div class="session-date">
           <span class="material-icons">event</span>
@@ -1731,232 +1790,238 @@ function updateRecentSessionsList(sessions) {
           </div>
         </div>
       </div>
-    `;
-  }).join('');
+    `
+    })
+    .join('')
 }
 
 // Update focus chart with session data
 function updateFocusChart(sessions) {
-  const chartElement = document.getElementById('focus-chart');
-  if (!chartElement) return;
-  
+  const chartElement = document.getElementById('focus-chart')
+  if (!chartElement) return
+
   try {
     // Only use sessions from the last 7 days
-    const oneWeekAgo = new Date();
-    oneWeekAgo.setDate(oneWeekAgo.getDate() - 7);
-    
-    const recentSessions = sessions.filter(session => 
-      new Date(session.startTime) >= oneWeekAgo
-    );
-    
+    const oneWeekAgo = new Date()
+    oneWeekAgo.setDate(oneWeekAgo.getDate() - 7)
+
+    const recentSessions = sessions.filter((session) => new Date(session.startTime) >= oneWeekAgo)
+
     // If no recent sessions, show placeholder chart
     if (recentSessions.length === 0) {
-      createPlaceholderChart(chartElement);
-      return;
+      createPlaceholderChart(chartElement)
+      return
     }
-    
+
     // Group sessions by day
-    const sessionsByDay = {};
-    const dayLabels = [];
-    
+    const sessionsByDay = {}
+    const dayLabels = []
+
     // Initialize the last 7 days
     for (let i = 6; i >= 0; i--) {
-      const date = new Date();
-      date.setDate(date.getDate() - i);
-      const dayKey = date.toISOString().slice(0, 10);
-      const dayName = date.toLocaleDateString('en-US', { weekday: 'short' });
-      
+      const date = new Date()
+      date.setDate(date.getDate() - i)
+      const dayKey = date.toISOString().slice(0, 10)
+      const dayName = date.toLocaleDateString('en-US', { weekday: 'short' })
+
       sessionsByDay[dayKey] = {
         scores: [],
         day: dayName,
         date: dayKey
-      };
-      
-      dayLabels.push(dayName);
-    }
-    
-    // Add sessions to their respective days
-    recentSessions.forEach(session => {
-      const date = new Date(session.startTime);
-      const dayKey = date.toISOString().slice(0, 10);
-      
-      if (sessionsByDay[dayKey]) {
-        sessionsByDay[dayKey].scores.push(session.attentionScore);
       }
-    });
-    
+
+      dayLabels.push(dayName)
+    }
+
+    // Add sessions to their respective days
+    recentSessions.forEach((session) => {
+      const date = new Date(session.startTime)
+      const dayKey = date.toISOString().slice(0, 10)
+
+      if (sessionsByDay[dayKey]) {
+        sessionsByDay[dayKey].scores.push(session.attentionScore)
+      }
+    })
+
     // Calculate average scores for each day
-    const currentWeekData = [];
-    const previousWeekData = [];
-    
-    Object.keys(sessionsByDay).forEach(day => {
-      const scores = sessionsByDay[day].scores;
-      
+    const currentWeekData = []
+    const previousWeekData = []
+
+    Object.keys(sessionsByDay).forEach((day) => {
+      const scores = sessionsByDay[day].scores
+
       // Current week data
       if (scores.length > 0) {
-        const avgScore = scores.reduce((sum, score) => sum + score, 0) / scores.length;
-        currentWeekData.push(Math.round(avgScore));
+        const avgScore = scores.reduce((sum, score) => sum + score, 0) / scores.length
+        currentWeekData.push(Math.round(avgScore))
       } else {
-        currentWeekData.push(null); // No data for this day
+        currentWeekData.push(null) // No data for this day
       }
-      
+
       // Previous week data (placeholder - would need actual previous week data)
-      previousWeekData.push(Math.random() * 30 + 60); // Random value between 60-90
-    });
-    
+      previousWeekData.push(Math.random() * 30 + 60) // Random value between 60-90
+    })
+
     // Create SVG chart
-    createFocusChart(chartElement, dayLabels, currentWeekData, previousWeekData);
+    createFocusChart(chartElement, dayLabels, currentWeekData, previousWeekData)
   } catch (error) {
-    console.error('Error updating focus chart:', error);
-    createPlaceholderChart(chartElement);
+    console.error('Error updating focus chart:', error)
+    createPlaceholderChart(chartElement)
   }
 }
 
 // Create focus chart with real data
 function createFocusChart(chartElement, labels, currentData, previousData) {
-  const width = 800;
-  const height = 300;
-  const padding = { top: 30, right: 20, bottom: 40, left: 40 };
-  
+  const width = 800
+  const height = 300
+  const padding = { top: 30, right: 20, bottom: 40, left: 40 }
+
+  if (!chartElement || !labels || !currentData || !previousData) {
+    console.error('Missing required parameters for createFocusChart')
+    createPlaceholderChart(chartElement || document.getElementById('focus-chart'))
+    return
+  }
+
   // Determine max value for scaling
   const maxValue = Math.max(
-    ...currentData.filter(v => v !== null),
-    ...previousData
-  );
-  
+    ...currentData.filter((v) => v !== null),
+    ...previousData.filter((v) => v !== null)
+  )
+
   // Create SVG element
-  const svg = document.createElementNS('http://www.w3.org/2000/svg', 'svg');
-  svg.setAttribute('width', '100%');
-  svg.setAttribute('height', '100%');
-  svg.setAttribute('viewBox', `0 0 ${width} ${height}`);
-  
+  const svg = document.createElementNS('http://www.w3.org/2000/svg', 'svg')
+  svg.setAttribute('width', '100%')
+  svg.setAttribute('height', '100%')
+  svg.setAttribute('viewBox', `0 0 ${width} ${height}`)
+
   // Add grid lines
   for (let i = 0; i <= 4; i++) {
-    const y = padding.top + (height - padding.top - padding.bottom) * (i / 4);
-    const line = document.createElementNS('http://www.w3.org/2000/svg', 'line');
-    line.setAttribute('x1', padding.left);
-    line.setAttribute('y1', y);
-    line.setAttribute('x2', width - padding.right);
-    line.setAttribute('y2', y);
-    line.setAttribute('stroke', 'rgba(255,255,255,0.1)');
-    line.setAttribute('stroke-width', '1');
-    svg.appendChild(line);
-    
+    const y = padding.top + (height - padding.top - padding.bottom) * (i / 4)
+    const line = document.createElementNS('http://www.w3.org/2000/svg', 'line')
+    line.setAttribute('x1', padding.left)
+    line.setAttribute('y1', y)
+    line.setAttribute('x2', width - padding.right)
+    line.setAttribute('y2', y)
+    line.setAttribute('stroke', 'rgba(255,255,255,0.1)')
+    line.setAttribute('stroke-width', '1')
+    svg.appendChild(line)
+
     // Add Y-axis labels
-    const label = document.createElementNS('http://www.w3.org/2000/svg', 'text');
-    label.setAttribute('x', padding.left - 10);
-    label.setAttribute('y', y + 5);
-    label.setAttribute('text-anchor', 'end');
-    label.setAttribute('fill', '#b0b7c3');
-    label.setAttribute('font-size', '12');
-    label.textContent = `${Math.round(maxValue * (1 - i / 4))}`;
-    svg.appendChild(label);
+    const label = document.createElementNS('http://www.w3.org/2000/svg', 'text')
+    label.setAttribute('x', padding.left - 10)
+    label.setAttribute('y', y + 5)
+    label.setAttribute('text-anchor', 'end')
+    label.setAttribute('fill', '#b0b7c3')
+    label.setAttribute('font-size', '12')
+    label.textContent = `${Math.round(maxValue * (1 - i / 4))}`
+    svg.appendChild(label)
   }
-  
+
   // Create current week line path
-  let currentPath = `M${padding.left},${padding.top + height - padding.top - padding.bottom}`;
-  let validPoints = 0;
-  
+  let currentPath = `M${padding.left},${padding.top + height - padding.top - padding.bottom}`
+  let validPoints = 0
+
   currentData.forEach((value, index) => {
     if (value !== null) {
-      const x = padding.left + (width - padding.left - padding.right) * (index / (labels.length - 1));
-      const y = padding.top + (height - padding.top - padding.bottom) * (1 - value / maxValue);
-      
+      const x =
+        padding.left + (width - padding.left - padding.right) * (index / (labels.length - 1))
+      const y = padding.top + (height - padding.top - padding.bottom) * (1 - value / maxValue)
+
       if (validPoints === 0) {
-        currentPath = `M${x},${y}`;
+        currentPath = `M${x},${y}`
       } else {
-        currentPath += ` L${x},${y}`;
+        currentPath += ` L${x},${y}`
       }
-      
-      validPoints++;
+
+      validPoints++
     }
-  });
-  
+  })
+
   // If we have at least two points, add the path
   if (validPoints >= 2) {
-    const path = document.createElementNS('http://www.w3.org/2000/svg', 'path');
-    path.setAttribute('d', currentPath);
-    path.setAttribute('fill', 'none');
-    path.setAttribute('stroke', '#3366ff');
-    path.setAttribute('stroke-width', '3');
-    svg.appendChild(path);
+    const path = document.createElementNS('http://www.w3.org/2000/svg', 'path')
+    path.setAttribute('d', currentPath)
+    path.setAttribute('fill', 'none')
+    path.setAttribute('stroke', '#3366ff')
+    path.setAttribute('stroke-width', '3')
+    svg.appendChild(path)
   }
-  
+
   // Create previous week line path
-  let prevPath = '';
-  validPoints = 0;
-  
+  let prevPath = ''
+  validPoints = 0
+
   previousData.forEach((value, index) => {
-    const x = padding.left + (width - padding.left - padding.right) * (index / (labels.length - 1));
-    const y = padding.top + (height - padding.top - padding.bottom) * (1 - value / maxValue);
-    
+    const x = padding.left + (width - padding.left - padding.right) * (index / (labels.length - 1))
+    const y = padding.top + (height - padding.top - padding.bottom) * (1 - value / maxValue)
+
     if (validPoints === 0) {
-      prevPath = `M${x},${y}`;
+      prevPath = `M${x},${y}`
     } else {
-      prevPath += ` L${x},${y}`;
+      prevPath += ` L${x},${y}`
     }
-    
-    validPoints++;
-  });
-  
+
+    validPoints++
+  })
+
   // Add previous week path with dashed line
   if (validPoints >= 2) {
-    const path = document.createElementNS('http://www.w3.org/2000/svg', 'path');
-    path.setAttribute('d', prevPath);
-    path.setAttribute('fill', 'none');
-    path.setAttribute('stroke', '#ff9966');
-    path.setAttribute('stroke-width', '3');
-    path.setAttribute('stroke-dasharray', '5,5');
-    svg.appendChild(path);
+    const path = document.createElementNS('http://www.w3.org/2000/svg', 'path')
+    path.setAttribute('d', prevPath)
+    path.setAttribute('fill', 'none')
+    path.setAttribute('stroke', '#ff9966')
+    path.setAttribute('stroke-width', '3')
+    path.setAttribute('stroke-dasharray', '5,5')
+    svg.appendChild(path)
   }
-  
+
   // Add X-axis labels
   labels.forEach((label, index) => {
-    const x = padding.left + (width - padding.left - padding.right) * (index / (labels.length - 1));
-    const text = document.createElementNS('http://www.w3.org/2000/svg', 'text');
-    text.setAttribute('x', x);
-    text.setAttribute('y', height - 10);
-    text.setAttribute('text-anchor', 'middle');
-    text.setAttribute('fill', '#b0b7c3');
-    text.setAttribute('font-size', '12');
-    text.textContent = label;
-    svg.appendChild(text);
-  });
-  
+    const x = padding.left + (width - padding.left - padding.right) * (index / (labels.length - 1))
+    const text = document.createElementNS('http://www.w3.org/2000/svg', 'text')
+    text.setAttribute('x', x)
+    text.setAttribute('y', height - 10)
+    text.setAttribute('text-anchor', 'middle')
+    text.setAttribute('fill', '#b0b7c3')
+    text.setAttribute('font-size', '12')
+    text.textContent = label
+    svg.appendChild(text)
+  })
+
   // Add legend
-  const legend1 = document.createElementNS('http://www.w3.org/2000/svg', 'circle');
-  legend1.setAttribute('cx', width - 150);
-  legend1.setAttribute('cy', 20);
-  legend1.setAttribute('r', 5);
-  legend1.setAttribute('fill', '#3366ff');
-  svg.appendChild(legend1);
-  
-  const legend1Text = document.createElementNS('http://www.w3.org/2000/svg', 'text');
-  legend1Text.setAttribute('x', width - 140);
-  legend1Text.setAttribute('y', 25);
-  legend1Text.setAttribute('fill', '#ffffff');
-  legend1Text.setAttribute('font-size', '12');
-  legend1Text.textContent = 'This week';
-  svg.appendChild(legend1Text);
-  
-  const legend2 = document.createElementNS('http://www.w3.org/2000/svg', 'circle');
-  legend2.setAttribute('cx', width - 60);
-  legend2.setAttribute('cy', 20);
-  legend2.setAttribute('r', 5);
-  legend2.setAttribute('fill', '#ff9966');
-  svg.appendChild(legend2);
-  
-  const legend2Text = document.createElementNS('http://www.w3.org/2000/svg', 'text');
-  legend2Text.setAttribute('x', width - 50);
-  legend2Text.setAttribute('y', 25);
-  legend2Text.setAttribute('fill', '#ffffff');
-  legend2Text.setAttribute('font-size', '12');
-  legend2Text.textContent = 'Last week';
-  svg.appendChild(legend2Text);
-  
+  const legend1 = document.createElementNS('http://www.w3.org/2000/svg', 'circle')
+  legend1.setAttribute('cx', width - 150)
+  legend1.setAttribute('cy', 20)
+  legend1.setAttribute('r', 5)
+  legend1.setAttribute('fill', '#3366ff')
+  svg.appendChild(legend1)
+
+  const legend1Text = document.createElementNS('http://www.w3.org/2000/svg', 'text')
+  legend1Text.setAttribute('x', width - 140)
+  legend1Text.setAttribute('y', 25)
+  legend1Text.setAttribute('fill', '#ffffff')
+  legend1Text.setAttribute('font-size', '12')
+  legend1Text.textContent = 'This week'
+  svg.appendChild(legend1Text)
+
+  const legend2 = document.createElementNS('http://www.w3.org/2000/svg', 'circle')
+  legend2.setAttribute('cx', width - 60)
+  legend2.setAttribute('cy', 20)
+  legend2.setAttribute('r', 5)
+  legend2.setAttribute('fill', '#ff9966')
+  svg.appendChild(legend2)
+
+  const legend2Text = document.createElementNS('http://www.w3.org/2000/svg', 'text')
+  legend2Text.setAttribute('x', width - 50)
+  legend2Text.setAttribute('y', 25)
+  legend2Text.setAttribute('fill', '#ffffff')
+  legend2Text.setAttribute('font-size', '12')
+  legend2Text.textContent = 'Last week'
+  svg.appendChild(legend2Text)
+
   // Clear and append the SVG
-  chartElement.innerHTML = '';
-  chartElement.appendChild(svg);
+  chartElement.innerHTML = ''
+  chartElement.appendChild(svg)
 }
 
 // Create placeholder chart when no data is available
@@ -1993,311 +2058,109 @@ function createPlaceholderChart(chartElement) {
         <text x="750" y="25" fill="#ffffff" font-size="12">Last week</text>
       </svg>
     </div>
-  `;
+  `
 
-  chartElement.innerHTML = chartHTML;
+  chartElement.innerHTML = chartHTML
 }
 
 // Main function to initialize focus tracking
 async function initializeFocusTracking() {
-  const focusContainer = document.getElementById('focus-tracking-container');
+  const focusContainer = document.getElementById('focus-tracking-container')
   if (!focusContainer) {
-    console.error('Focus tracking container not found');
-    return;
+    console.error('Focus tracking container not found')
+    return
   }
-  
+
   // Create focus tracker if not exists
   if (!window.focusTracker) {
-    window.focusTracker = new FocusTracker();
-    await window.focusTracker.initialize(focusContainer);
+    window.focusTracker = new FocusTracker()
+    await window.focusTracker.initialize(focusContainer)
   }
 }
 
 // Load focus sessions from local storage and update the dashboard
 function loadAndUpdateFocusSessions() {
   try {
-    const savedSessions = localStorage.getItem('focusSessions');
+    const savedSessions = localStorage.getItem('focusSessions')
     if (savedSessions) {
-      const sessions = JSON.parse(savedSessions);
-      console.log(`Loaded ${sessions.length} focus sessions from storage`);
-      
+      const sessions = JSON.parse(savedSessions)
+      console.log(`Loaded ${sessions.length} focus sessions from storage`)
+
       // Update dashboard with loaded sessions
-      updateDashboardWithFocusData(sessions);
-      return sessions;
+      updateDashboardWithFocusData(sessions)
+      return sessions
     }
   } catch (error) {
-    console.error('Error loading focus sessions:', error);
+    console.error('Error loading focus sessions:', error)
   }
-  return [];
+  return []
 }
 
 // Export focus sessions to a JSON file
-async function exportFocusSessions() {
-  try {
-    const sessions = loadAndUpdateFocusSessions();
-    
-    if (sessions.length === 0) {
-      alert('No focus sessions to export');
-      return;
-    }
-    
-    const dataStr = JSON.stringify(sessions, null, 2);
-    const dataUri = 'data:application/json;charset=utf-8,' + encodeURIComponent(dataStr);
-    
-    const exportFileDefaultName = `focus-sessions-${new Date().toISOString().slice(0, 10)}.json`;
-    
-    const linkElement = document.createElement('a');
-    linkElement.setAttribute('href', dataUri);
-    linkElement.setAttribute('download', exportFileDefaultName);
-    linkElement.style.display = 'none';
-    document.body.appendChild(linkElement); // Required for Firefox
-    
-    linkElement.click();
-    
-    document.body.removeChild(linkElement);
-  } catch (error) {
-    console.error('Error exporting focus sessions:', error);
-    alert('Failed to export focus sessions');
-  }
-}
 
 // Import focus sessions from a JSON file
-async function importFocusSessions(fileInputEvent) {
-  try {
-    const file = fileInputEvent.target.files[0];
-    if (!file) {
-      return;
-    }
-    
-    const reader = new FileReader();
-    
-    reader.onload = function(event) {
-      try {
-        const importedSessions = JSON.parse(event.target.result);
-        
-        if (!Array.isArray(importedSessions)) {
-          throw new Error('Invalid format: imported data is not an array');
-        }
-        
-        const validSessions = importedSessions.filter(session => {
-          return session.startTime && (session.endTime || session.sessionDuration) && 
-                 typeof session.attentionScore === 'number';
-        });
-        
-        if (validSessions.length === 0) {
-          throw new Error('No valid focus sessions found in the imported file');
-        }
-        
-        // Get existing sessions
-        let existingSessions = [];
-        try {
-          const savedData = localStorage.getItem('focusSessions');
-          if (savedData) {
-            existingSessions = JSON.parse(savedData);
-          }
-        } catch (e) {
-          console.warn('Could not load existing sessions, starting fresh');
-          existingSessions = [];
-        }
-        
-        // Merge with existing sessions, avoiding duplicates by ID
-        const existingIds = new Set(existingSessions.map(s => s.id));
-        
-        const newSessions = [
-          ...existingSessions,
-          ...validSessions.filter(s => !existingIds.has(s.id))
-        ];
-        
-        // Sort and limit to 50 sessions
-        const finalSessions = newSessions
-          .sort((a, b) => new Date(b.startTime) - new Date(a.startTime))
-          .slice(0, 50);
-        
-        // Save to localStorage
-        localStorage.setItem('focusSessions', JSON.stringify(finalSessions));
-        
-        // Update the UI
-        updateDashboardWithFocusData(finalSessions);
-        
-        // Show success message
-        const notification = document.createElement('div');
-        notification.className = 'notification';
-        notification.textContent = `Successfully imported ${validSessions.length} focus sessions`;
-        document.body.appendChild(notification);
-        
-        setTimeout(() => {
-          notification.classList.add('show');
-        }, 10);
-        
-        setTimeout(() => {
-          notification.classList.remove('show');
-          setTimeout(() => {
-            document.body.removeChild(notification);
-          }, 300);
-        }, 3000);
-        
-      } catch (error) {
-        console.error('Error parsing imported file:', error);
-        alert(`Error importing focus sessions: ${error.message}`);
-      }
-    };
-    
-    reader.onerror = function() {
-      alert('Error reading the file');
-    };
-    
-    reader.readAsText(file);
-  } catch (error) {
-    console.error('Error importing focus sessions:', error);
-    alert(`Error importing focus sessions: ${error.message}`);
-  }
-}
-
 
 // Initialize focus tracker instance
-let focusTracker = null;
-
-// Function to initialize focus tracking components
-
-
-// Update dashboard with focus session data
-function updateDashboardWithFocusData(sessions) {
-  if (!sessions || sessions.length === 0) return;
-  
-  // Calculate total study time (in hours)
-  const totalStudyTimeHours = sessions.reduce((total, session) => {
-    const duration = session.sessionDuration || 
-      ((session.endTime - session.startTime) / 1000 / 3600);
-    return total + duration;
-  }, 0);
-  
-  // Calculate average focus score
-  const avgFocusScore = sessions.reduce((total, session) => 
-    total + session.attentionScore, 0) / sessions.length;
-  
-  // Find completed modules (sessions with score > 70)
-  const completedModules = sessions.filter(session => session.attentionScore > 70).length;
-  
-  // Update dashboard UI if elements exist
-  const studyTimeElement = document.querySelector('.stat-card:nth-child(1) .stat-value');
-  const avgFocusElement = document.querySelector('.stat-card:nth-child(2) .stat-value');
-  const modulesElement = document.querySelector('.stat-card:nth-child(3) .stat-value');
-  
-  if (studyTimeElement) {
-    studyTimeElement.textContent = `${totalStudyTimeHours.toFixed(1)}h`;
-  }
-  
-  if (avgFocusElement) {
-    avgFocusElement.textContent = `${Math.round(avgFocusScore)}%`;
-  }
-  
-  if (modulesElement) {
-    modulesElement.textContent = completedModules.toString();
-  }
-  
-  // Update recent sessions list in dashboard
-  updateRecentSessionsList(sessions);
-}
+let focusTracker = null
 
 // Update recent sessions list in dashboard
-function updateRecentSessionsList(sessions) {
-  const recentSessionsList = document.querySelector('.sessions-list');
-  if (!recentSessionsList) return;
-  
-  if (sessions.length === 0) {
-    recentSessionsList.innerHTML = `
-      <p class="empty-state">
-        No recent study sessions found. Start tracking your focus to see data here.
-      </p>
-    `;
-    return;
-  }
-  
-  // Sort sessions by date, newest first
-  const sortedSessions = [...sessions].sort((a, b) => 
-    new Date(b.startTime || b.createdAt || 0) - new Date(a.startTime || a.createdAt || 0)
-  );
-  
-  // Take the 5 most recent sessions
-  const recentSessions = sortedSessions.slice(0, 5);
-  
-  recentSessionsList.innerHTML = recentSessions.map(session => {
-    const startTime = new Date(session.startTime);
-    const formattedDate = startTime.toLocaleDateString();
-    const formattedTime = startTime.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
-    const duration = Math.round((session.endTime - session.startTime) / 1000 / 60); // Duration in minutes
-    
-    return `
-      <div class="session-item">
-        <div class="session-date">
-          <span class="material-icons">event</span>
-          ${formattedDate}, ${formattedTime}
-        </div>
-        <div class="session-details">
-          <div class="session-duration">
-            <span class="material-icons">timer</span>
-            ${duration} min
-          </div>
-          <div class="session-focus">
-            <span class="material-icons">psychology</span>
-            Score: ${Math.round(session.attentionScore)}%
-          </div>
-        </div>
-      </div>
-    `;
-  }).join('');
-}
 
 // Enhanced curriculum generation using TensorFlow
 async function createCurriculumModel() {
   // Create a simple model for prioritizing assignments
-  const model = tf.sequential();
-  
-  model.add(tf.layers.dense({
-    units: 10,
-    activation: 'relu',
-    inputShape: [5] // Complexity, time required, due date, etc.
-  }));
-  
-  model.add(tf.layers.dense({
-    units: 5,
-    activation: 'relu'
-  }));
-  
-  model.add(tf.layers.dense({
-    units: 1,
-    activation: 'sigmoid' // Priority score between 0 and 1
-  }));
-  
+  const model = tf.sequential()
+
+  model.add(
+    tf.layers.dense({
+      units: 10,
+      activation: 'relu',
+      inputShape: [5] // Complexity, time required, due date, etc.
+    })
+  )
+
+  model.add(
+    tf.layers.dense({
+      units: 5,
+      activation: 'relu'
+    })
+  )
+
+  model.add(
+    tf.layers.dense({
+      units: 1,
+      activation: 'sigmoid' // Priority score between 0 and 1
+    })
+  )
+
   model.compile({
     optimizer: tf.train.adam(0.01),
     loss: 'binaryCrossentropy',
     metrics: ['accuracy']
-  });
-  
-  return model;
+  })
+
+  return model
 }
 
 // Extract features from course data for AI-based curriculum generation
 function extractFeaturesFromCourseData(courses) {
   return courses.reduce((allFeatures, course) => {
     if (!course.courseWork || course.courseWork.length === 0) {
-      return allFeatures;
+      return allFeatures
     }
-    
-    const courseFeatures = course.courseWork.map(work => {
+
+    const courseFeatures = course.courseWork.map((work) => {
       // Calculate assignment complexity based on description length, title, etc.
-      const complexityScore = calculateAssignmentComplexity(work);
-      
+      const complexityScore = calculateAssignmentComplexity(work)
+
       // Calculate estimated time required
-      const timeRequired = estimateTimeRequired(work);
-      
+      const timeRequired = estimateTimeRequired(work)
+
       // Calculate due window (days until due)
-      const dueWindow = calculateDueWindow(work);
-      
+      const dueWindow = calculateDueWindow(work)
+
       // Calculate priority level
-      const priorityLevel = calculatePriorityLevel(work, complexityScore, dueWindow);
-      
+      const priorityLevel = calculatePriorityLevel(work, complexityScore, dueWindow)
+
       return {
         courseId: course.id,
         courseName: course.name,
@@ -2310,238 +2173,238 @@ function extractFeaturesFromCourseData(courses) {
         priorityLevel,
         dueDate: work.dueDate ? createDateFromDueDate(work.dueDate) : null,
         originalWork: work
-      };
-    });
-    
-    return [...allFeatures, ...courseFeatures];
-  }, []);
+      }
+    })
+
+    return [...allFeatures, ...courseFeatures]
+  }, [])
 }
 
 // Calculate assignment complexity score
 function calculateAssignmentComplexity(work) {
-  let complexity = 0;
-  
+  let complexity = 0
+
   // Base complexity by work type
   switch (work.workType) {
     case 'ASSIGNMENT':
-      complexity = 3;
-      break;
+      complexity = 3
+      break
     case 'SHORT_ANSWER_QUESTION':
-      complexity = 2;
-      break;
+      complexity = 2
+      break
     case 'MULTIPLE_CHOICE_QUESTION':
-      complexity = 1;
-      break;
+      complexity = 1
+      break
     case 'QUIZ':
-      complexity = 4;
-      break;
+      complexity = 4
+      break
     case 'TEST':
-      complexity = 5;
-      break;
+      complexity = 5
+      break
     default:
-      complexity = 2;
+      complexity = 2
   }
-  
+
   // Add complexity based on description length if available
   if (work.description) {
     // Longer descriptions usually mean more complex assignments
-    complexity += Math.min(work.description.length / 200, 3);
+    complexity += Math.min(work.description.length / 200, 3)
   }
-  
+
   // Normalize to 0-1 range
-  return Math.min(complexity / 10, 1);
+  return Math.min(complexity / 10, 1)
 }
 
 // Estimate time required for assignment
 function estimateTimeRequired(work) {
-  let baseTime = 0; // in hours
-  
+  let baseTime = 0 // in hours
+
   // Base time by work type
   switch (work.workType) {
     case 'ASSIGNMENT':
-      baseTime = 1.5;
-      break;
+      baseTime = 1.5
+      break
     case 'SHORT_ANSWER_QUESTION':
-      baseTime = 0.5;
-      break;
+      baseTime = 0.5
+      break
     case 'MULTIPLE_CHOICE_QUESTION':
-      baseTime = 0.25;
-      break;
+      baseTime = 0.25
+      break
     case 'QUIZ':
-      baseTime = 1;
-      break;
+      baseTime = 1
+      break
     case 'TEST':
-      baseTime = 2;
-      break;
+      baseTime = 2
+      break
     default:
-      baseTime = 1;
+      baseTime = 1
   }
-  
+
   // Adjust based on description length
   if (work.description) {
-    baseTime += Math.min(work.description.length / 500, 1);
+    baseTime += Math.min(work.description.length / 500, 1)
   }
-  
+
   // Normalize to 0-1 range (assuming max 5 hours)
-  return Math.min(baseTime / 5, 1);
+  return Math.min(baseTime / 5, 1)
 }
 
 // Calculate due window (days until due)
 function calculateDueWindow(work) {
   if (!work.dueDate) {
-    return 1; // Far in the future if no due date
+    return 1 // Far in the future if no due date
   }
-  
-  const today = new Date();
-  const dueDate = createDateFromDueDate(work.dueDate);
-  const diffTime = dueDate - today;
-  const diffDays = Math.ceil(diffTime / (1000 * 60 * 60 * 24));
-  
+
+  const today = new Date()
+  const dueDate = createDateFromDueDate(work.dueDate)
+  const diffTime = dueDate - today
+  const diffDays = Math.ceil(diffTime / (1000 * 60 * 60 * 24))
+
   // Normalize to 0-1 range (0 = due today, 1 = due in 14+ days)
-  return Math.max(0, Math.min(diffDays / 14, 1));
+  return Math.max(0, Math.min(diffDays / 14, 1))
 }
 
 // Calculate priority level
 function calculatePriorityLevel(work, complexity, dueWindow) {
   // Priority increases with complexity and decreases with due window
   // Due window has more weight (urgent items are higher priority)
-  return (complexity * 0.3) + ((1 - dueWindow) * 0.7);
+  return complexity * 0.3 + (1 - dueWindow) * 0.7
 }
 
 // Generate smart curriculum using TensorFlow model
 async function generateSmartCurriculum(coursesData, userPreferences = {}) {
   try {
     // Extract features from course data
-    const features = extractFeaturesFromCourseData(coursesData);
-    
+    const features = extractFeaturesFromCourseData(coursesData)
+
     if (features.length === 0) {
-      return { success: false, message: 'No course work available to generate curriculum' };
+      return { success: false, message: 'No course work available to generate curriculum' }
     }
-    
+
     // Set default preferences if not provided
     const preferences = {
       preferredDifficulty: 0.5, // Medium difficulty
       availableHoursPerWeek: 10, // Default 10 hours/week
       prioritizeDeadlines: true,
       ...userPreferences
-    };
-    
+    }
+
     // Load TensorFlow.js if not already loaded
     if (!window.tf) {
-      await import('@tensorflow/tfjs');
+      await import('@tensorflow/tfjs')
     }
-    
+
     // Create or load the model
-    const model = await createCurriculumModel();
-    
+    const model = await createCurriculumModel()
+
     // Calculate optimal study plan
-    const studyPlan = optimizeStudyPlan(features, preferences);
-    
+    const studyPlan = optimizeStudyPlan(features, preferences)
+
     // Create a weekly schedule
-    const weeklySchedule = createWeeklySchedule(studyPlan, coursesData);
-    
+    const weeklySchedule = createWeeklySchedule(studyPlan, coursesData)
+
     return {
       success: true,
       weeklySchedule,
       totalAssignments: features.length,
       totalEstimatedHours: calculateTotalHours(studyPlan),
       courseBreakdown: calculateCourseBreakdown(studyPlan)
-    };
+    }
   } catch (error) {
-    console.error('Error generating smart curriculum:', error);
-    return { 
-      success: false, 
-      message: `Failed to generate curriculum: ${error.message}` 
-    };
+    console.error('Error generating smart curriculum:', error)
+    return {
+      success: false,
+      message: `Failed to generate curriculum: ${error.message}`
+    }
   }
 }
 
 // Optimize study plan based on features and preferences
 function optimizeStudyPlan(features, preferences) {
   // Sort features by priority
-  let sortedFeatures = [...features];
-  
+  let sortedFeatures = [...features]
+
   if (preferences.prioritizeDeadlines) {
     // Prioritize by due date first, then by complexity
     sortedFeatures.sort((a, b) => {
       // If both have due dates, sort by due date
       if (a.dueDate && b.dueDate) {
-        return a.dueDate - b.dueDate;
+        return a.dueDate - b.dueDate
       }
       // If only one has a due date, prioritize it
-      if (a.dueDate) return -1;
-      if (b.dueDate) return 1;
-      
+      if (a.dueDate) return -1
+      if (b.dueDate) return 1
+
       // If neither has a due date, sort by complexity based on preference
       if (preferences.preferredDifficulty >= 0.5) {
         // Prefer more complex assignments
-        return b.assignmentComplexity - a.assignmentComplexity;
+        return b.assignmentComplexity - a.assignmentComplexity
       } else {
         // Prefer less complex assignments
-        return a.assignmentComplexity - b.assignmentComplexity;
+        return a.assignmentComplexity - b.assignmentComplexity
       }
-    });
+    })
   } else {
     // Sort by calculated priority level
-    sortedFeatures.sort((a, b) => b.priorityLevel - a.priorityLevel);
+    sortedFeatures.sort((a, b) => b.priorityLevel - a.priorityLevel)
   }
-  
-  return sortedFeatures;
+
+  return sortedFeatures
 }
 
 // Create weekly schedule from optimized study plan
 function createWeeklySchedule(studyPlan, originalCourseData) {
-  const weeklySchedule = [];
-  const daysOfWeek = 7;
-  
+  const weeklySchedule = []
+  const daysOfWeek = 7
+
   // Initialize schedule for 4 weeks
   for (let week = 0; week < 4; week++) {
-    const weekStart = new Date();
-    weekStart.setDate(weekStart.getDate() + (week * 7));
-    
-    const weekEnd = new Date(weekStart);
-    weekEnd.setDate(weekEnd.getDate() + 6);
-    
+    const weekStart = new Date()
+    weekStart.setDate(weekStart.getDate() + week * 7)
+
+    const weekEnd = new Date(weekStart)
+    weekEnd.setDate(weekEnd.getDate() + 6)
+
     weeklySchedule.push({
       week: week + 1,
       startDate: weekStart,
       endDate: weekEnd,
       days: []
-    });
-    
+    })
+
     // Initialize days for the week
     for (let day = 0; day < daysOfWeek; day++) {
-      const dayDate = new Date(weekStart);
-      dayDate.setDate(dayDate.getDate() + day);
-      
+      const dayDate = new Date(weekStart)
+      dayDate.setDate(dayDate.getDate() + day)
+
       weeklySchedule[week].days.push({
         day,
         date: dayDate,
         assignments: []
-      });
+      })
     }
   }
-  
+
   // Distribute assignments across the schedule
-  let currentWeek = 0;
-  let currentDay = 0;
-  let currentDayHours = 0;
-  const maxHoursPerDay = 3; // Configurable
-  
-  studyPlan.forEach(assignment => {
-    const estimatedHours = assignment.timeRequired * 5; // Convert from normalized value
-    
+  let currentWeek = 0
+  let currentDay = 0
+  let currentDayHours = 0
+  const maxHoursPerDay = 3 // Configurable
+
+  studyPlan.forEach((assignment) => {
+    const estimatedHours = assignment.timeRequired * 5 // Convert from normalized value
+
     // Check if we need to move to the next day
     if (currentDayHours + estimatedHours > maxHoursPerDay) {
-      currentDay = (currentDay + 1) % daysOfWeek;
-      currentDayHours = 0;
-      
+      currentDay = (currentDay + 1) % daysOfWeek
+      currentDayHours = 0
+
       // Check if we need to move to the next week
       if (currentDay === 0) {
-        currentWeek = (currentWeek + 1) % 4;
+        currentWeek = (currentWeek + 1) % 4
       }
     }
-    
+
     // Add assignment to the schedule
     weeklySchedule[currentWeek].days[currentDay].assignments.push({
       id: assignment.workId,
@@ -2552,43 +2415,43 @@ function createWeeklySchedule(studyPlan, originalCourseData) {
       dueDate: assignment.dueDate,
       type: assignment.workType,
       complexity: assignment.assignmentComplexity
-    });
-    
+    })
+
     // Update current day hours
-    currentDayHours += estimatedHours;
-  });
-  
-  return weeklySchedule;
+    currentDayHours += estimatedHours
+  })
+
+  return weeklySchedule
 }
 
 // Calculate total estimated hours for the curriculum
 function calculateTotalHours(studyPlan) {
   return studyPlan.reduce((total, assignment) => {
-    return total + (assignment.timeRequired * 5); // Convert from normalized value
-  }, 0);
+    return total + assignment.timeRequired * 5 // Convert from normalized value
+  }, 0)
 }
 
 // Calculate course breakdown for the curriculum
 function calculateCourseBreakdown(studyPlan) {
-  const courseData = {};
-  
-  studyPlan.forEach(assignment => {
+  const courseData = {}
+
+  studyPlan.forEach((assignment) => {
     if (!courseData[assignment.courseName]) {
       courseData[assignment.courseName] = {
         assignmentCount: 0,
         totalHours: 0
-      };
+      }
     }
-    
-    courseData[assignment.courseName].assignmentCount++;
-    courseData[assignment.courseName].totalHours += (assignment.timeRequired * 5);
-  });
-  
+
+    courseData[assignment.courseName].assignmentCount++
+    courseData[assignment.courseName].totalHours += assignment.timeRequired * 5
+  })
+
   return Object.entries(courseData).map(([courseName, data]) => ({
     courseName,
     assignmentCount: data.assignmentCount,
     totalHours: data.totalHours
-  }));
+  }))
 }
 
 // Initialize the application
@@ -2605,24 +2468,24 @@ async function initApp() {
 
     function initFocusTracking() {
       // Load and update sessions on startup
-      loadAndUpdateFocusSessions();
-      
+      loadAndUpdateFocusSessions()
+
       // Add event listeners for import/export buttons
-      document.getElementById('export-sessions')?.addEventListener('click', exportFocusSessions);
-      document.getElementById('import-sessions')?.addEventListener('change', importFocusSessions);
-      
+      document.getElementById('export-sessions')?.addEventListener('click', exportFocusSessions)
+      document.getElementById('import-sessions')?.addEventListener('change', importFocusSessions)
+
       // Focus section integration
       document.querySelector('[data-section="focus"]')?.addEventListener('click', () => {
         // Initialize focus tracking when navigating to the focus section
-        initializeFocusTracking();
-      });
+        initializeFocusTracking()
+      })
     }
 
     // Initialize theme
     themeManager.initialize()
 
     // Load focus sessions
-    loadFocusSessions();
+    loadFocusSessions()
 
     // Initialize UI elements
     createFocusChart()
@@ -2648,10 +2511,10 @@ async function initApp() {
         // Don't remove the token here, let the API call handle that
       }
     }
-    
+
     // Update dashboard with focus session data
-    const sessions = loadFocusSessions();
-    updateDashboardWithFocusData(sessions);
+    const sessions = loadFocusSessions()
+    updateDashboardWithFocusData(sessions)
   } catch (error) {
     console.error('Error during app initialization:', error)
   }
@@ -2679,6 +2542,15 @@ async function testClassroomAPI() {
       console.error('Classroom API test failed with status:', response.status)
       const errorText = await response.text()
       console.error('Error response:', errorText)
+
+      // If token is invalid, remove it
+      if (response.status === 401) {
+        console.log('Token appears to be invalid or expired, removing it')
+        localStorage.removeItem('googleClassroomToken')
+        // Optionally notify the user they need to sign in again
+        updateUI(null) // Update UI to show user is not logged in
+      }
+
       return
     }
 
@@ -3052,7 +2924,7 @@ function updateGenerateButton() {
     document.getElementById('generate-curriculum-btn')?.addEventListener('click', () => {
       generateCurriculum(selectedCourses, false) // Regular generation
     })
-    
+
     // Add event listener for smart generate button
     document.getElementById('generate-smart-curriculum-btn')?.addEventListener('click', () => {
       generateCurriculum(selectedCourses, true) // Smart AI-based generation
@@ -3075,7 +2947,9 @@ async function generateCurriculum(courseIds, useSmart = false) {
     return
   }
 
-  const generateButton = document.getElementById(useSmart ? 'generate-smart-curriculum-btn' : 'generate-curriculum-btn')
+  const generateButton = document.getElementById(
+    useSmart ? 'generate-smart-curriculum-btn' : 'generate-curriculum-btn'
+  )
   const generateButtonContainer = document.getElementById('generate-button-container')
 
   if (generateButton) {
@@ -3122,13 +2996,13 @@ async function generateCurriculum(courseIds, useSmart = false) {
     if (useSmart) {
       // Get focus sessions for preferences
       const focusSessions = loadFocusSessions()
-      
+
       // Extract user preferences
       const userPreferences = extractUserPreferencesFromFocusSessions(focusSessions)
-      
+
       // Generate smart curriculum
       const smartResult = await generateSmartCurriculum(selectedCourses, userPreferences)
-      
+
       if (smartResult.success) {
         showSmartCurriculum(selectedCourses, smartResult)
       } else {
@@ -3138,7 +3012,7 @@ async function generateCurriculum(courseIds, useSmart = false) {
       // Show normal curriculum
       showGeneratedCurriculum(selectedCourses)
     }
-    
+
     // Remove loading overlay
     document.body.removeChild(loadingOverlay)
   } catch (error) {
@@ -3154,9 +3028,9 @@ async function generateCurriculum(courseIds, useSmart = false) {
     if (generateButton) {
       // Reset button state
       generateButton.disabled = false
-      generateButton.innerHTML = useSmart ? 
-        `<span class="material-icons">psychology</span> Smart Curriculum` : 
-        `<span class="material-icons">auto_awesome</span> Generate Curriculum`
+      generateButton.innerHTML = useSmart
+        ? `<span class="material-icons">psychology</span> Smart Curriculum`
+        : `<span class="material-icons">auto_awesome</span> Generate Curriculum`
     }
   }
 }
@@ -3170,28 +3044,35 @@ function extractUserPreferencesFromFocusSessions(sessions) {
       prioritizeDeadlines: true
     }
   }
-  
+
   // Calculate average session duration
-  const avgSessionDuration = sessions.reduce((total, session) => {
-    const duration = (session.endTime - session.startTime) / (1000 * 60 * 60) // hours
-    return total + duration
-  }, 0) / sessions.length
-  
+  const avgSessionDuration =
+    sessions.reduce((total, session) => {
+      const duration = (session.endTime - session.startTime) / (1000 * 60 * 60) // hours
+      return total + duration
+    }, 0) / sessions.length
+
   // Calculate average attention score
-  const avgAttentionScore = sessions.reduce((total, session) => {
-    return total + session.attentionScore
-  }, 0) / sessions.length
-  
+  const avgAttentionScore =
+    sessions.reduce((total, session) => {
+      return total + session.attentionScore
+    }, 0) / sessions.length
+
   // Estimate available time per week based on past sessions
   const sessionsPerWeek = Math.min(sessions.length / 4, 5) // Assume data from last 4 weeks, max 5 sessions/week
   const availableHoursPerWeek = Math.max(5, Math.min(20, sessionsPerWeek * avgSessionDuration))
-  
+
   // Determine preferred difficulty based on attention score
   // Higher attention score = can handle higher difficulty
-  const preferredDifficulty = avgAttentionScore >= 80 ? 0.8 : 
-                             avgAttentionScore >= 60 ? 0.6 : 
-                             avgAttentionScore >= 40 ? 0.4 : 0.3
-  
+  const preferredDifficulty =
+    avgAttentionScore >= 80
+      ? 0.8
+      : avgAttentionScore >= 60
+        ? 0.6
+        : avgAttentionScore >= 40
+          ? 0.4
+          : 0.3
+
   return {
     preferredDifficulty,
     availableHoursPerWeek,
@@ -3232,22 +3113,27 @@ function showSmartCurriculum(courses, smartResult) {
     (total, course) => total + (course.courseWork?.length || 0),
     0
   )
-  
+
   // Generate schedule weeks HTML
-  const scheduleWeeksHTML = smartResult.weeklySchedule.map(week => {
-    return `
+  const scheduleWeeksHTML = smartResult.weeklySchedule
+    .map((week) => {
+      return `
       <div class="schedule-week">
         <h4>Week ${week.week}: ${formatDateShort(week.startDate)} - ${formatDateShort(week.endDate)}</h4>
         <div class="schedule-days">
-          ${week.days.map(day => {
-            const dayName = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'][day.day]
-            return `
+          ${week.days
+            .map((day) => {
+              const dayName = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'][day.day]
+              return `
               <div class="schedule-day">
                 <div class="day-header">${dayName} ${formatDateShort(day.date)}</div>
                 <div class="day-assignments">
-                  ${day.assignments.length === 0 ? 
-                    `<div class="empty-day">No assignments scheduled</div>` : 
-                    day.assignments.map(assignment => `
+                  ${
+                    day.assignments.length === 0
+                      ? `<div class="empty-day">No assignments scheduled</div>`
+                      : day.assignments
+                          .map(
+                            (assignment) => `
                       <div class="schedule-assignment">
                         <div class="assignment-icon">
                           <span class="material-icons">${getWorkTypeIcon(assignment.type)}</span>
@@ -3257,26 +3143,33 @@ function showSmartCurriculum(courses, smartResult) {
                           <div class="assignment-course">${assignment.courseName}</div>
                           <div class="assignment-time">
                             <span class="material-icons">schedule</span> ${assignment.estimatedHours.toFixed(1)} hrs
-                            ${assignment.dueDate ? 
-                              `<span class="due-date">Due: ${formatDateShort(assignment.dueDate)}</span>` : 
-                              ''}
+                            ${
+                              assignment.dueDate
+                                ? `<span class="due-date">Due: ${formatDateShort(assignment.dueDate)}</span>`
+                                : ''
+                            }
                           </div>
                         </div>
                       </div>
-                    `).join('')
+                    `
+                          )
+                          .join('')
                   }
                 </div>
               </div>
-            `;
-          }).join('')}
+            `
+            })
+            .join('')}
         </div>
       </div>
-    `;
-  }).join('');
-  
+    `
+    })
+    .join('')
+
   // Generate course breakdown HTML
-  const courseBreakdownHTML = smartResult.courseBreakdown.map(course => {
-    return `
+  const courseBreakdownHTML = smartResult.courseBreakdown
+    .map((course) => {
+      return `
       <div class="course-breakdown-item">
         <div class="course-name">${course.courseName}</div>
         <div class="course-stats">
@@ -3290,8 +3183,9 @@ function showSmartCurriculum(courses, smartResult) {
           </div>
         </div>
       </div>
-    `;
-  }).join('');
+    `
+    })
+    .join('')
 
   curriculumContainer.innerHTML = `
     <div class="curriculum-header">
@@ -3458,72 +3352,72 @@ function showGeneratedCurriculum(courses) {
    </div>
  `
 
- // Display the curriculum container
- curriculumContainer.style.display = 'block'
+  // Display the curriculum container
+  curriculumContainer.style.display = 'block'
 
- // Add event listener for back button
- document.getElementById('back-to-courses')?.addEventListener('click', () => {
-   curriculumContainer.style.display = 'none'
+  // Add event listener for back button
+  document.getElementById('back-to-courses')?.addEventListener('click', () => {
+    curriculumContainer.style.display = 'none'
 
-   if (coursesContainer) {
-     coursesContainer.style.display = 'grid'
-   }
+    if (coursesContainer) {
+      coursesContainer.style.display = 'grid'
+    }
 
-   updateGenerateButton()
- })
+    updateGenerateButton()
+  })
 }
 
 function generateTimelineHTML(courses) {
- // Get all assignments with due dates
- const assignmentsWithDates = []
+  // Get all assignments with due dates
+  const assignmentsWithDates = []
 
- courses.forEach((course) => {
-   if (course.courseWork && course.courseWork.length > 0) {
-     course.courseWork.forEach((work) => {
-       if (work.dueDate) {
-         assignmentsWithDates.push({
-           title: work.title,
-           courseName: course.name,
-           dueDate: createDateFromDueDate(work.dueDate),
-           workType: work.workType || 'ASSIGNMENT'
-         })
-       }
-     })
-   }
- })
+  courses.forEach((course) => {
+    if (course.courseWork && course.courseWork.length > 0) {
+      course.courseWork.forEach((work) => {
+        if (work.dueDate) {
+          assignmentsWithDates.push({
+            title: work.title,
+            courseName: course.name,
+            dueDate: createDateFromDueDate(work.dueDate),
+            workType: work.workType || 'ASSIGNMENT'
+          })
+        }
+      })
+    }
+  })
 
- // Sort assignments by due date
- assignmentsWithDates.sort((a, b) => a.dueDate - b.dueDate)
+  // Sort assignments by due date
+  assignmentsWithDates.sort((a, b) => a.dueDate - b.dueDate)
 
- // Group assignments by week
- const today = new Date()
- const weekMilliseconds = 7 * 24 * 60 * 60 * 1000
- const weeks = []
+  // Group assignments by week
+  const today = new Date()
+  const weekMilliseconds = 7 * 24 * 60 * 60 * 1000
+  const weeks = []
 
- // Create 4 weeks starting from today
- for (let i = 0; i < 4; i++) {
-   const startDate = new Date(today.getTime() + i * weekMilliseconds)
-   const endDate = new Date(startDate.getTime() + weekMilliseconds - 1)
+  // Create 4 weeks starting from today
+  for (let i = 0; i < 4; i++) {
+    const startDate = new Date(today.getTime() + i * weekMilliseconds)
+    const endDate = new Date(startDate.getTime() + weekMilliseconds - 1)
 
-   weeks.push({
-     startDate,
-     endDate,
-     assignments: []
-   })
- }
+    weeks.push({
+      startDate,
+      endDate,
+      assignments: []
+    })
+  }
 
- // Assign each assignment to a week
- assignmentsWithDates.forEach((assignment) => {
-   for (const week of weeks) {
-     if (assignment.dueDate >= week.startDate && assignment.dueDate <= week.endDate) {
-       week.assignments.push(assignment)
-       break
-     }
-   }
- })
+  // Assign each assignment to a week
+  assignmentsWithDates.forEach((assignment) => {
+    for (const week of weeks) {
+      if (assignment.dueDate >= week.startDate && assignment.dueDate <= week.endDate) {
+        week.assignments.push(assignment)
+        break
+      }
+    }
+  })
 
- // Generate HTML for timeline
- return `
+  // Generate HTML for timeline
+  return `
    <div class="timeline">
      ${weeks
        .map(
@@ -3564,78 +3458,78 @@ function generateTimelineHTML(courses) {
 }
 
 function createDateFromDueDate(dueDate) {
- return new Date(dueDate.year, (dueDate.month || 1) - 1, dueDate.day || 1)
+  return new Date(dueDate.year, (dueDate.month || 1) - 1, dueDate.day || 1)
 }
 
 function formatDateShort(date) {
- return new Intl.DateTimeFormat('en-US', {
-   month: 'short',
-   day: 'numeric'
- }).format(date)
+  return new Intl.DateTimeFormat('en-US', {
+    month: 'short',
+    day: 'numeric'
+  }).format(date)
 }
 
 function getWorkTypeIcon(workType) {
- switch (workType) {
-   case 'ASSIGNMENT':
-     return 'assignment'
-   case 'SHORT_ANSWER_QUESTION':
-     return 'question_answer'
-   case 'MULTIPLE_CHOICE_QUESTION':
-     return 'quiz'
-   case 'QUIZ':
-     return 'quiz'
-   case 'TEST':
-     return 'fact_check'
-   case 'MATERIAL':
-     return 'book'
-   default:
-     return 'assignment'
- }
+  switch (workType) {
+    case 'ASSIGNMENT':
+      return 'assignment'
+    case 'SHORT_ANSWER_QUESTION':
+      return 'question_answer'
+    case 'MULTIPLE_CHOICE_QUESTION':
+      return 'quiz'
+    case 'QUIZ':
+      return 'quiz'
+    case 'TEST':
+      return 'fact_check'
+    case 'MATERIAL':
+      return 'book'
+    default:
+      return 'assignment'
+  }
 }
 
 // Helper function to format date
 function formatDate(dateObj) {
- if (!dateObj) return 'No due date'
+  if (!dateObj) return 'No due date'
 
- try {
-   const date = createDateFromDueDate(dateObj)
-   return date.toLocaleDateString('en-US', {
-     weekday: 'short',
-     month: 'short',
-     day: 'numeric'
-   })
- } catch (e) {
-   return 'Invalid date'
- }
+  try {
+    const date = createDateFromDueDate(dateObj)
+    return date.toLocaleDateString('en-US', {
+      weekday: 'short',
+      month: 'short',
+      day: 'numeric'
+    })
+  } catch (e) {
+    return 'Invalid date'
+  }
 }
 
 // Updated viewCourseDetails function that properly displays a modal
 async function viewCourseDetails(courseId) {
- try {
-   // Show loading indicator
-   const loadingIndicator = document.createElement('div')
-   loadingIndicator.className = 'loading-indicator'
-   loadingIndicator.innerHTML = `
+  try {
+    // Show loading indicator
+    const loadingIndicator = document.createElement('div')
+    loadingIndicator.className = 'loading-indicator'
+    loadingIndicator.innerHTML = `
      <span class="material-icons rotating">sync</span>
      <p>Loading course details...</p>
    `
-   document.body.appendChild(loadingIndicator)
+    document.body.appendChild(loadingIndicator)
 
-   // Fetch course work data
-   const courseWork = await classroomService.fetchCourseWork(courseId)
+    // Fetch course work data
+    const courseWork = await classroomService.fetchCourseWork(courseId)
 
-   // Remove loading indicator
-   document.body.removeChild(loadingIndicator)
+    // Remove loading indicator
+    document.body.removeChild(loadingIndicator)
 
-   // Get course name
-   const courseElement = document.querySelector(`.course-card[data-course-id="${courseId}"]`)
-   const courseName = courseElement?.querySelector('.course-name')?.textContent || 'Course Details'
+    // Get course name
+    const courseElement = document.querySelector(`.course-card[data-course-id="${courseId}"]`)
+    const courseName = courseElement?.querySelector('.course-name')?.textContent || 'Course Details'
 
-   // Create the modal
-   const modal = document.createElement('div')
-   modal.className = 'modal'
-   modal.id = `course-details-modal-${courseId}`
-   modal.innerHTML = `
+    // Create the modal
+    const modal = document.createElement('div')
+    modal.className = 'modal'
+    modal.id = `course-details-modal-${courseId}`
+    modal.innerHTML = `
      <div class="modal-content">
        <div class="modal-header">
          <h2>${courseName}</h2>
@@ -3678,43 +3572,43 @@ async function viewCourseDetails(courseId) {
      </div>
    `
 
-   // Add the modal to the body
-   document.body.appendChild(modal)
+    // Add the modal to the body
+    document.body.appendChild(modal)
 
-   // Force a reflow before adding the active class (for animation)
-   void modal.offsetWidth
+    // Force a reflow before adding the active class (for animation)
+    void modal.offsetWidth
 
-   // Show the modal with animation
-   setTimeout(() => {
-     modal.classList.add('active')
-   }, 10)
+    // Show the modal with animation
+    setTimeout(() => {
+      modal.classList.add('active')
+    }, 10)
 
-   // Add event listener to close button
-   modal.querySelector('.close-button').addEventListener('click', () => {
-     closeModal(modal)
-   })
+    // Add event listener to close button
+    modal.querySelector('.close-button').addEventListener('click', () => {
+      closeModal(modal)
+    })
 
-   // Close modal when clicking outside of content
-   modal.addEventListener('click', (event) => {
-     if (event.target === modal) {
-       closeModal(modal)
-     }
-   })
+    // Close modal when clicking outside of content
+    modal.addEventListener('click', (event) => {
+      if (event.target === modal) {
+        closeModal(modal)
+      }
+    })
 
-   // Add keyboard events for accessibility
-   document.addEventListener('keydown', function escKeyHandler(e) {
-     if (e.key === 'Escape') {
-       closeModal(modal)
-       document.removeEventListener('keydown', escKeyHandler)
-     }
-   })
- } catch (error) {
-   console.error('Error loading course details:', error)
+    // Add keyboard events for accessibility
+    document.addEventListener('keydown', function escKeyHandler(e) {
+      if (e.key === 'Escape') {
+        closeModal(modal)
+        document.removeEventListener('keydown', escKeyHandler)
+      }
+    })
+  } catch (error) {
+    console.error('Error loading course details:', error)
 
-   // Show error in a clean modal
-   const errorModal = document.createElement('div')
-   errorModal.className = 'modal active'
-   errorModal.innerHTML = `
+    // Show error in a clean modal
+    const errorModal = document.createElement('div')
+    errorModal.className = 'modal active'
+    errorModal.innerHTML = `
      <div class="modal-content">
        <div class="modal-header">
          <h2>Error</h2>
@@ -3730,187 +3624,145 @@ async function viewCourseDetails(courseId) {
      </div>
    `
 
-   document.body.appendChild(errorModal)
+    document.body.appendChild(errorModal)
 
-   // Set up event listeners for error modal
-   errorModal.querySelector('.close-button').addEventListener('click', () => {
-     closeModal(errorModal)
-   })
+    // Set up event listeners for error modal
+    errorModal.querySelector('.close-button').addEventListener('click', () => {
+      closeModal(errorModal)
+    })
 
-   errorModal.querySelector('#retry-course-details')?.addEventListener('click', () => {
-     closeModal(errorModal)
-     viewCourseDetails(courseId)
-   })
+    errorModal.querySelector('#retry-course-details')?.addEventListener('click', () => {
+      closeModal(errorModal)
+      viewCourseDetails(courseId)
+    })
 
-   errorModal.addEventListener('click', (event) => {
-     if (event.target === errorModal) {
-       closeModal(errorModal)
-     }
-   })
- }
+    errorModal.addEventListener('click', (event) => {
+      if (event.target === errorModal) {
+        closeModal(errorModal)
+      }
+    })
+  }
 }
 
 // Helper function to close modal with animation
 function closeModal(modalElement) {
- modalElement.classList.remove('active')
+  modalElement.classList.remove('active')
 
- // Wait for animation to complete before removing from DOM
- setTimeout(() => {
-   if (document.body.contains(modalElement)) {
-     document.body.removeChild(modalElement)
-   }
- }, 300) // Match this to your CSS transition duration
-}
-
-// For the chart (Placeholder)
-function createFocusChart() {
- const chartElement = document.getElementById('focus-chart')
- if (!chartElement) return
-
- const chartHTML = `
-   <div class="chart-placeholder">
-     <svg width="100%" height="100%" viewBox="0 0 800 300">
-       <!-- Chart grid -->
-       <line x1="0" y1="250" x2="800" y2="250" stroke="rgba(255,255,255,0.1)" stroke-width="1"/>
-       <line x1="0" y1="200" x2="800" y2="200" stroke="rgba(255,255,255,0.1)" stroke-width="1"/>
-       <line x1="0" y1="150" x2="800" y2="150" stroke="rgba(255,255,255,0.1)" stroke-width="1"/>
-       <line x1="0" y1="100" x2="800" y2="100" stroke="rgba(255,255,255,0.1)" stroke-width="1"/>
-       <line x1="0" y1="50" x2="800" y2="50" stroke="rgba(255,255,255,0.1)" stroke-width="1"/>
-       
-       <!-- Chart data - Focus level line -->
-       <path d="M0,200 Q100,180 200,150 T400,100 T600,170 T800,120" fill="none" stroke="#3366ff" stroke-width="3"/>
-       
-       <!-- Chart data - Previous period line -->
-       <path d="M0,180 Q100,200 200,220 T400,150 T600,190 T800,170" fill="none" stroke="#ff9966" stroke-width="3" stroke-dasharray="5,5"/>
-       
-       <!-- X-axis labels -->
-       <text x="0" y="270" fill="#b0b7c3" font-size="12">Mon</text>
-       <text x="133" y="270" fill="#b0b7c3" font-size="12">Tue</text>
-       <text x="266" y="270" fill="#b0b7c3" font-size="12">Wed</text>
-       <text x="399" y="270" fill="#b0b7c3" font-size="12">Thu</text>
-       <text x="532" y="270" fill="#b0b7c3" font-size="12">Fri</text>
-       <text x="665" y="270" fill="#b0b7c3" font-size="12">Sat</text>
-       <text x="798" y="270" fill="#b0b7c3" font-size="12">Sun</text>
-       
-       <!-- Legend -->
-       <circle cx="650" cy="20" r="5" fill="#3366ff"/>
-       <text x="660" y="25" fill="#ffffff" font-size="12">This week</text>
-       <circle cx="740" cy="20" r="5" fill="#ff9966"/>
-       <text x="750" y="25" fill="#ffffff" font-size="12">Last week</text>
-     </svg>
-   </div>
- `
-
- chartElement.innerHTML = chartHTML
+  // Wait for animation to complete before removing from DOM
+  setTimeout(() => {
+    if (document.body.contains(modalElement)) {
+      document.body.removeChild(modalElement)
+    }
+  }, 300) // Match this to your CSS transition duration
 }
 
 // Initialize Navigation
 function initNavigation() {
- console.log('Initializing navigation...')
+  console.log('Initializing navigation...')
 
- document.querySelectorAll('.nav-btn').forEach((button) => {
-   button.addEventListener('click', () => {
-     // Remove active class from all buttons and sections
-     document.querySelectorAll('.nav-btn').forEach((btn) => btn.classList.remove('active'))
-     document
-       .querySelectorAll('.content-section')
-       .forEach((section) => section.classList.remove('active'))
+  document.querySelectorAll('.nav-btn').forEach((button) => {
+    button.addEventListener('click', () => {
+      // Remove active class from all buttons and sections
+      document.querySelectorAll('.nav-btn').forEach((btn) => btn.classList.remove('active'))
+      document
+        .querySelectorAll('.content-section')
+        .forEach((section) => section.classList.remove('active'))
 
-     // Add active class to clicked button and corresponding section
-     button.classList.add('active')
-     const sectionId = button.dataset.section + '-section'
-     const section = document.getElementById(sectionId)
+      // Add active class to clicked button and corresponding section
+      button.classList.add('active')
+      const sectionId = button.dataset.section + '-section'
+      const section = document.getElementById(sectionId)
 
-     if (section) {
-       section.classList.add('active')
+      if (section) {
+        section.classList.add('active')
 
-       // If switching to curriculum section, load data
-       if (sectionId === 'curriculum-section' && authService.isLoggedIn()) {
-         loadCurriculumData()
-       }
-       
-       // If switching to focus section, initialize focus tracking
-       if (sectionId === 'focus-section') {
-         initializeFocusTracking()
-       }
-     } else {
-       console.error(`Section with ID "${sectionId}" not found`)
-     }
-   })
- })
+        // If switching to curriculum section, load data
+        if (sectionId === 'curriculum-section' && authService.isLoggedIn()) {
+          loadCurriculumData()
+        }
+
+        // If switching to focus section, initialize focus tracking
+        if (sectionId === 'focus-section') {
+          initializeFocusTracking()
+        }
+      } else {
+        console.error(`Section with ID "${sectionId}" not found`)
+      }
+    })
+  })
 }
 
 // Initialize Settings
 function initSettings() {
- console.log('Initializing settings...')
+  console.log('Initializing settings...')
 
- // Theme options
- document.querySelectorAll('.theme-option').forEach((option) => {
-   option.addEventListener('click', () => {
-     const theme = option.dataset.theme
-     document.querySelectorAll('.theme-option').forEach((btn) => btn.classList.remove('active'))
-     option.classList.add('active')
-     themeManager.setTheme(theme)
-   })
- })
+  // Theme options
+  document.querySelectorAll('.theme-option').forEach((option) => {
+    option.addEventListener('click', () => {
+      const theme = option.dataset.theme
+      document.querySelectorAll('.theme-option').forEach((btn) => btn.classList.remove('active'))
+      option.classList.add('active')
+      themeManager.setTheme(theme)
+    })
+  })
 
- // Theme toggle button
- document.getElementById('theme-toggle')?.addEventListener('click', () => {
-   themeManager.toggleTheme()
- })
+  // Theme toggle button
+  document.getElementById('theme-toggle')?.addEventListener('click', () => {
+    themeManager.toggleTheme()
+  })
 
- // Connect Classroom button - use auth service login
- document.getElementById('connect-classroom')?.addEventListener('click', async () => {
-   console.log('Connecting to Google Classroom...')
-   try {
-     await authService.login()
-   } catch (error) {
-     console.error('Failed to connect to Google Classroom:', error)
-     alert(`Failed to connect to Google Classroom: ${error.message}`)
-   }
- })
+  // Connect Classroom button - use auth service login
+  document.getElementById('connect-classroom')?.addEventListener('click', async () => {
+    console.log('Connecting to Google Classroom...')
+    try {
+      await authService.login()
+    } catch (error) {
+      console.error('Failed to connect to Google Classroom:', error)
+      alert(`Failed to connect to Google Classroom: ${error.message}`)
+    }
+  })
 }
 
 // Window control buttons
 function initWindowControls() {
- console.log('Initializing window controls...')
+  console.log('Initializing window controls...')
 
- // Set up window control buttons
- if (ipcRenderer) {
-   document.getElementById('minimize')?.addEventListener('click', () => {
-     console.log('Minimize button clicked')
-     ipcRenderer.send('window-control', 'minimize')
-   })
+  // Set up window control buttons
+  if (ipcRenderer) {
+    document.getElementById('minimize')?.addEventListener('click', () => {
+      console.log('Minimize button clicked')
+      ipcRenderer.send('window-control', 'minimize')
+    })
 
-   document.getElementById('maximize')?.addEventListener('click', () => {
-     console.log('Maximize button clicked')
-     ipcRenderer.send('window-control', 'maximize')
-   })
+    document.getElementById('maximize')?.addEventListener('click', () => {
+      console.log('Maximize button clicked')
+      ipcRenderer.send('window-control', 'maximize')
+    })
 
-   document.getElementById('close')?.addEventListener('click', () => {
-     console.log('Close button clicked')
-     ipcRenderer.send('window-control', 'close')
-   })
- } else {
-   console.warn('IPC Renderer not available - window controls will not function')
- }
+    document.getElementById('close')?.addEventListener('click', () => {
+      console.log('Close button clicked')
+      ipcRenderer.send('window-control', 'close')
+    })
+  } else {
+    console.warn('IPC Renderer not available - window controls will not function')
+  }
 }
 
 // Call initialize when DOM is loaded
 document.addEventListener('DOMContentLoaded', () => {
- console.log('DOM loaded, initializing application...')
+  console.log('DOM loaded, initializing application...')
 
- // Debug logging for button detection
- console.log('Login button:', document.getElementById('login-button'))
- console.log('Curriculum login button:', document.getElementById('curriculum-login-button'))
+  // Debug logging for button detection
+  console.log('Login button:', document.getElementById('login-button'))
+  console.log('Curriculum login button:', document.getElementById('curriculum-login-button'))
 
- console.log('All buttons on the page:')
- document.querySelectorAll('button').forEach((button, index) => {
-   console.log(`Button ${index}:`, button, 'ID:', button.id)
- })
+  console.log('All buttons on the page:')
+  document.querySelectorAll('button').forEach((button, index) => {
+    console.log(`Button ${index}:`, button, 'ID:', button.id)
+  })
 
- // Initialize the application
- initApp()
+  // Initialize the application
+  initApp()
 })
 
 // Export services for use in other modules
