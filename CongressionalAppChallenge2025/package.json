@@ -40,6 +40,7 @@
     "@tensorflow/tfjs": "^4.22.0",
     "@tensorflow/tfjs-converter": "^4.22.0",
     "chart.js": "^4.4.8",
+    "d3": "^7.9.0",
     "dotenv": "^16.4.7",
     "electron-updater": "^6.3.9",
     "firebase": "^11.4.0",

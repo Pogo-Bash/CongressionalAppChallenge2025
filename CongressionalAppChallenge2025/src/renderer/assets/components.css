@@ -473,27 +473,6 @@ h3 {
   margin-right: var(--spacing-xs);
 }
 
-.chart-container {
-  background-color: var(--card-background);
-  padding: var(--spacing-md);
-  border-radius: var(--border-radius);
-  box-shadow: 0 2px 8px var(--shadow-color);
-  margin-bottom: var(--spacing-lg);
-}
-
-.chart-container h3 {
-  font-size: var(--font-size-lg);
-  font-weight: 500;
-  color: var(--text-primary);
-  margin-bottom: var(--spacing-sm);
-}
-
-.chart {
-  height: 300px;
-  width: 100%;
-  position: relative;
-}
-
 .recent-sessions {
   background-color: var(--card-background);
   padding: var(--spacing-md);
