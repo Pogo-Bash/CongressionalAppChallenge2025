@@ -63,6 +63,10 @@
         "from": ".env",
         "to": ".env"
       }
-    ]
+    ],
+    "csp": {
+      "development": "default-src 'self'; script-src 'self' 'unsafe-eval' https://cdn.jsdelivr.net ...",
+      "production": "default-src 'self'; script-src 'self' https://cdn.jsdelivr.net ..."
+    }
   }
 }
