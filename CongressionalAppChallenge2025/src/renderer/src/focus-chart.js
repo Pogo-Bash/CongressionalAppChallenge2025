@@ -539,4 +539,4 @@ function debounce(func, wait) {
   };
 }
 
-export { updateFocusChart, createD3FocusChart, createPlaceholderChart };
+export { updateFocusChart, createD3FocusChart, createPlaceholderChart, debounce };

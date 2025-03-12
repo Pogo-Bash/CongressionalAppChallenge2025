@@ -1,7 +1,7 @@
 // Import theme manager
 import { themeManager } from './theme-manager.js'
 import * as tf from '@tensorflow/tfjs'
-import { updateFocusChart, createD3FocusChart, createPlaceholderChart } from './focus-chart.js';
+import { updateFocusChart, createD3FocusChart, createPlaceholderChart, debounce } from './focus-chart.js';
 import * as d3 from 'd3';
 
 // For communication with Electron main process
