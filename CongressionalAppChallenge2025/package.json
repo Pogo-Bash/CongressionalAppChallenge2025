@@ -36,6 +36,7 @@
     "@mui/icons-material": "^6.4.6",
     "@mui/material": "^6.4.6",
     "@tailwindcss/vite": "^4.0.9",
+    "@tensorflow-models/face-detection": "^1.0.3",
     "@tensorflow-models/face-landmarks-detection": "^1.0.6",
     "@tensorflow/tfjs": "^4.22.0",
     "@tensorflow/tfjs-converter": "^4.22.0",
@@ -65,8 +66,8 @@
       }
     ],
     "csp": {
-      "development": "default-src 'self'; script-src 'self' 'unsafe-eval' https://cdn.jsdelivr.net ...",
-      "production": "default-src 'self'; script-src 'self' https://cdn.jsdelivr.net ..."
+      "development": "default-src 'self'; script-src 'self' 'unsafe-eval' https://cdn.jsdelivr.net; connect-src 'self' https://cdn.jsdelivr.net https://*.googleapis.com https://classroom.googleapis.com https://*.firebaseio.com https://identitytoolkit.googleapis.com https://securetoken.googleapis.com https://tfhub.dev; ...",
+      "production": "default-src 'self'; script-src 'self' https://cdn.jsdelivr.net; connect-src 'self' https://cdn.jsdelivr.net https://*.googleapis.com https://classroom.googleapis.com https://*.firebaseio.com https://identitytoolkit.googleapis.com https://securetoken.googleapis.com https://tfhub.dev; ..."
     }
   }
 }

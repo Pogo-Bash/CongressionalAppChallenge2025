@@ -87,6 +87,8 @@ let tensorflowModel = null
 let faceDetector = null
 let focusTrackingInitialized = false
 
+// Replace the initializeTensorFlow function in your renderer.js with this updated version
+// Replace the initializeTensorFlow function in your renderer.js with this fixed version
 async function initializeTensorFlow() {
   if (focusTrackingInitialized) return true
 
@@ -119,22 +121,22 @@ async function initializeTensorFlow() {
     // Log available models
     console.log('Available face detection models:', Object.keys(faceDetection.SupportedModels))
 
-    // Create model config
+    // Create model config - FIXED: Adding the required runtime property
     const modelConfig = {
+      runtime: 'tfjs', // Required parameter
       modelType: 'short',
-      runtime: 'tfjs',
       maxFaces: 1
     }
 
-    // Explicitly specify the model type
-    const modelName = faceDetection.SupportedModels.BlazeFace
+    // Use MediaPipeFaceDetector instead of BlazeFace
+    const modelName = faceDetection.SupportedModels.MediaPipeFaceDetector
 
     // Make sure model name is valid
     if (!modelName) {
-      throw new Error('BlazeFace model not available in SupportedModels')
+      throw new Error('MediaPipeFaceDetector model not available in SupportedModels')
     }
 
-    console.log('Creating detector with model:', modelName)
+    console.log('Creating detector with model:', modelName, 'and config:', modelConfig)
 
     // Create the detector
     faceDetector = await faceDetection.createDetector(modelName, modelConfig)

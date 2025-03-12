@@ -89,12 +89,12 @@ function createWindow() {
           ...details.responseHeaders,
           'Content-Security-Policy': [
             "default-src 'self'; " +
-              "script-src 'self' https://cdn.jsdelivr.net https://*.googleapis.com https://*.firebaseio.com https://apis.google.com; " +
+              "script-src 'self' 'unsafe-eval' https://cdn.jsdelivr.net https://*.googleapis.com https://*.firebaseio.com https://apis.google.com; " +
               "font-src 'self' https://fonts.gstatic.com; " +
               "img-src 'self' data: https://*.googleusercontent.com; " +
               "media-src 'self' blob:; " +
-              "connect-src 'self' https://cdn.jsdelivr.net https://*.googleapis.com https://classroom.googleapis.com https://*.firebaseio.com https://identitytoolkit.googleapis.com https://securetoken.googleapis.com; " +
-              "style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; " +
+              "connect-src 'self' https://cdn.jsdelivr.net https://*.googleapis.com https://classroom.googleapis.com https://*.firebaseio.com https://identitytoolkit.googleapis.com https://securetoken.googleapis.com https://tfhub.dev https://www.kaggle.com; " +
+              +"style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; " +
               "frame-src 'self' https://*.firebaseapp.com https://accounts.google.com;"
           ]
         }
