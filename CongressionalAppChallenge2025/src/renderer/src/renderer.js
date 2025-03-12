@@ -2866,6 +2866,68 @@ function initializeAuthUI() {
   }
 }
 
+function initializeFocusChart() {
+  console.log('Initializing focus chart...');
+  const chartElement = document.getElementById('focus-chart');
+  
+  if (!chartElement) {
+    console.warn('Focus chart container not found');
+    return;
+  }
+  
+  // Load focus session data
+  const sessions = loadFocusSessions();
+  
+  if (sessions && sessions.length > 0) {
+    console.log(`Creating chart with ${sessions.length} sessions`);
+    updateFocusChart(sessions);
+  } else {
+    console.log('No session data available, creating placeholder chart');
+    createPlaceholderChart(chartElement);
+  }
+}
+
+// Ensure D3.js is loaded before creating charts
+function createFocusChart() {
+  // Check if D3.js is already loaded
+  if (window.d3) {
+    initializeFocusChart();
+  } else {
+    // D3.js needs to be loaded
+    console.log('D3.js not loaded, attempting to load it...');
+    
+    // Try to load D3.js dynamically
+    const script = document.createElement('script');
+    script.src = 'https://cdn.jsdelivr.net/npm/d3@7/dist/d3.min.js';
+    script.async = true;
+    script.onload = () => {
+      console.log('D3.js loaded successfully');
+      initializeFocusChart();
+    };
+    script.onerror = () => {
+      console.error('Failed to load D3.js');
+      // Show a message in the chart area
+      const chartElement = document.getElementById('focus-chart');
+      if (chartElement) {
+        chartElement.innerHTML = '<div class="chart-error">Chart library could not be loaded</div>';
+      }
+    };
+    
+    document.head.appendChild(script);
+  }
+}
+// Make sure the chart updates when the window is resized
+window.addEventListener('resize', debounce(() => {
+  // Only update if chart is visible (in active section)
+  const chartElement = document.getElementById('focus-chart');
+  const dashboardSection = document.getElementById('dashboard-section');
+  
+  if (chartElement && dashboardSection && dashboardSection.classList.contains('active')) {
+    console.log('Window resized, updating chart');
+    initializeFocusChart();
+  }
+}, 250));
+
 // Load curriculum data from Google Classroom
 async function loadCurriculumData() {
   if (!authService.isLoggedIn()) {
@@ -4112,7 +4174,10 @@ document.addEventListener('DOMContentLoaded', () => {
 
   // Initialize the application
   initApp()
-  initializeFocusChart();
+  
+  setTimeout(() => {
+    createFocusChart();
+  }, 100);
 })
 
 // Export services for use in other modules

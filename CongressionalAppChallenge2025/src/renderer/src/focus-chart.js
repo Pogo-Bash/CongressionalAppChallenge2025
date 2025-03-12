@@ -1,4 +1,32 @@
+// This should be placed directly in renderer.js or imported as a module
 
+function initializeFocusChart() {
+  console.log('Initializing focus chart...');
+  
+  // Load D3.js if not already loaded
+  if (!window.d3) {
+    console.log('D3.js not found, charts will be initialized when D3 is loaded');
+    return;
+  }
+  
+  // Find the chart container in the dashboard
+  const chartElement = document.getElementById('focus-chart');
+  if (!chartElement) {
+    console.warn('Focus chart container not found');
+    return;
+  }
+  
+  // Check if we have session data to display
+  const sessions = loadFocusSessions();
+  if (sessions && sessions.length > 0) {
+    updateFocusChart(sessions);
+  } else {
+    // Create a placeholder chart if no data is available
+    createPlaceholderChart(chartElement);
+  }
+}
+
+// Function to update the focus chart with session data
 function updateFocusChart(sessions) {
   const chartElement = document.getElementById('focus-chart');
   if (!chartElement) return;
@@ -60,6 +88,12 @@ function updateFocusChart(sessions) {
           date: date,
           value: Math.round(avgScore)
         });
+      } else {
+        // Add a null value for days with no data to maintain continuity in the chart
+        currentWeekData.push({
+          date: date,
+          value: null
+        });
       }
       
       // Previous week data (placeholder - would need actual previous week data)
@@ -69,7 +103,7 @@ function updateFocusChart(sessions) {
       
       previousWeekData.push({
         date: prevWeekDate,
-        value: Math.random() * 30 + 60 // Random value between 60-90
+        value: Math.round(Math.random() * 30 + 60) // Random value between 60-90
       });
     });
     
@@ -81,392 +115,427 @@ function updateFocusChart(sessions) {
   }
 }
 
-/**
- * Create focus chart with D3.js
- * @param {HTMLElement} chartElement - Container element for the chart
- * @param {Array} currentWeekData - Current week's data
- * @param {Array} previousWeekData - Previous week's data
- */
+// Create a D3.js focus chart
 function createD3FocusChart(chartElement, currentWeekData, previousWeekData) {
+  if (!window.d3) {
+    console.error('D3.js not loaded');
+    return;
+  }
+  
+  const d3 = window.d3;
+  
   // Clear previous content
   chartElement.innerHTML = '';
   
-  // Set up dimensions
-  const width = chartElement.clientWidth || 800;
-  const height = 300;
-  const margin = { top: 30, right: 30, bottom: 40, left: 50 };
-  const innerWidth = width - margin.left - margin.right;
-  const innerHeight = height - margin.top - margin.bottom;
+  // Set up dimensions based on container size
+  const containerWidth = chartElement.clientWidth || 800;
+  const containerHeight = 300;
+  const margin = { top: 30, right: 60, bottom: 40, left: 50 };
+  const width = containerWidth - margin.left - margin.right;
+  const height = containerHeight - margin.top - margin.bottom;
   
-  // Create SVG
+  // Create SVG element
   const svg = d3.select(chartElement)
     .append('svg')
-    .attr('width', '100%')
-    .attr('height', height)
-    .attr('viewBox', `0 0 ${width} ${height}`)
+    .attr('width', containerWidth)
+    .attr('height', containerHeight)
+    .attr('viewBox', `0 0 ${containerWidth} ${containerHeight}`)
     .attr('preserveAspectRatio', 'xMidYMid meet');
   
-  // Create chart group
+  // Create group element for the chart
   const chart = svg.append('g')
     .attr('transform', `translate(${margin.left}, ${margin.top})`);
   
   // Combine data for scales
-  const allData = [...currentWeekData, ...previousWeekData];
+  const allData = [...currentWeekData, ...previousWeekData].filter(d => d.value !== null);
   
-  // Create scales
+  // Set up scales
   const xScale = d3.scaleTime()
-    .domain(d3.extent(allData, d => d.date))
-    .range([0, innerWidth]);
-    
-  const yScale = d3.scaleLinear()
-    .domain([0, 100]) // Focus score is always 0-100
-    .range([innerHeight, 0]);
+    .domain(d3.extent(currentWeekData, d => d.date))
+    .range([0, width]);
   
-  // Create axes
+  // Use fixed domain for focus score (0-100)
+  const yScale = d3.scaleLinear()
+    .domain([0, 100])
+    .range([height, 0]);
+  
+  // Set up axes
   const xAxis = d3.axisBottom(xScale)
     .ticks(7)
-    .tickFormat(d3.timeFormat('%a')); // Format as weekday
-    
+    .tickFormat(d3.timeFormat('%a')); // Short day name
+  
   const yAxis = d3.axisLeft(yScale)
     .ticks(5)
     .tickFormat(d => `${d}%`);
   
   // Add grid lines
   chart.append('g')
-    .attr('class', 'grid')
-    .call(d3.axisLeft(yScale)
-      .ticks(5)
-      .tickSize(-innerWidth)
-      .tickFormat('')
-    )
-    .call(g => g.selectAll('.domain').remove())
-    .call(g => g.selectAll('line')
-      .attr('stroke', 'rgba(255, 255, 255, 0.1)')
-      .attr('stroke-dasharray', '3,3')
-    );
+    .attr('class', 'grid-lines')
+    .selectAll('line')
+    .data(yScale.ticks(5))
+    .enter()
+    .append('line')
+    .attr('x1', 0)
+    .attr('x2', width)
+    .attr('y1', d => yScale(d))
+    .attr('y2', d => yScale(d))
+    .attr('stroke', 'rgba(255, 255, 255, 0.1)')
+    .attr('stroke-dasharray', '3,3');
   
   // Add X axis
   chart.append('g')
     .attr('class', 'x-axis')
-    .attr('transform', `translate(0, ${innerHeight})`)
+    .attr('transform', `translate(0, ${height})`)
     .call(xAxis)
-    .call(g => g.selectAll('line').attr('stroke', '#b0b7c3'))
-    .call(g => g.selectAll('path').attr('stroke', '#b0b7c3'))
-    .call(g => g.selectAll('text').attr('fill', '#b0b7c3'));
+    .selectAll('text')
+    .style('text-anchor', 'middle')
+    .attr('fill', '#b0b7c3')
+    .attr('font-size', '12px');
   
   // Add Y axis
   chart.append('g')
     .attr('class', 'y-axis')
     .call(yAxis)
-    .call(g => g.selectAll('line').attr('stroke', '#b0b7c3'))
-    .call(g => g.selectAll('path').attr('stroke', '#b0b7c3'))
-    .call(g => g.selectAll('text').attr('fill', '#b0b7c3'));
+    .selectAll('text')
+    .attr('fill', '#b0b7c3')
+    .attr('font-size', '12px');
   
-  // Create line generators
+  // Create line generator
   const line = d3.line()
     .x(d => xScale(d.date))
-    .y(d => yScale(d.value))
+    .y(d => d.value !== null ? yScale(d.value) : null)
+    .defined(d => d.value !== null) // Skip null values
     .curve(d3.curveMonotoneX); // Smooth curve
   
-  // Add clip path to ensure lines don't extend beyond chart area
-  chart.append('defs')
-    .append('clipPath')
-    .attr('id', 'clip')
-    .append('rect')
-    .attr('width', innerWidth)
-    .attr('height', innerHeight);
-  
-  // Create a group for lines that respects the clip path
-  const linesGroup = chart.append('g')
-    .attr('clip-path', 'url(#clip)');
-  
   // Add previous week line (dashed)
-  if (previousWeekData.length >= 2) {
-    const previousPath = linesGroup.append('path')
-      .datum(previousWeekData)
-      .attr('fill', 'none')
-      .attr('stroke', '#ff9966')
-      .attr('stroke-width', 3)
-      .attr('stroke-dasharray', '5,5')
-      .attr('d', line);
-    
-    // Add animation
-    const previousPathLength = previousPath.node().getTotalLength();
-    previousPath
-      .attr('stroke-dasharray', `${previousPathLength},${previousPathLength}`)
-      .attr('stroke-dashoffset', previousPathLength)
-      .transition()
-      .duration(1500)
-      .attr('stroke-dashoffset', 0);
-    
-    // Add data points
-    linesGroup.selectAll('.prev-point')
-      .data(previousWeekData)
-      .enter()
-      .append('circle')
-      .attr('class', 'prev-point')
-      .attr('cx', d => xScale(d.date))
-      .attr('cy', d => yScale(d.value))
-      .attr('r', 3)
-      .attr('fill', '#ff9966')
-      .style('opacity', 0)
-      .transition()
-      .delay((d, i) => i * 200)
-      .duration(300)
-      .style('opacity', 1);
-  }
+  chart.append('path')
+    .datum(previousWeekData)
+    .attr('class', 'previous-line')
+    .attr('fill', 'none')
+    .attr('stroke', '#ff9966')
+    .attr('stroke-width', 2)
+    .attr('stroke-dasharray', '5,5')
+    .attr('d', line);
   
   // Add current week line
-  if (currentWeekData.length >= 2) {
-    const currentPath = linesGroup.append('path')
-      .datum(currentWeekData)
-      .attr('fill', 'none')
-      .attr('stroke', '#3366ff')
-      .attr('stroke-width', 3)
-      .attr('d', line);
-    
-    // Add animation
-    const currentPathLength = currentPath.node().getTotalLength();
-    currentPath
-      .attr('stroke-dasharray', `${currentPathLength},${currentPathLength}`)
-      .attr('stroke-dashoffset', currentPathLength)
+  const currentLine = chart.append('path')
+    .datum(currentWeekData.filter(d => d.value !== null))
+    .attr('class', 'focus-line')
+    .attr('fill', 'none')
+    .attr('stroke', '#3366ff')
+    .attr('stroke-width', 3)
+    .attr('d', line);
+  
+  // Add animation to current line
+  const currentLineLength = currentLine.node()?.getTotalLength();
+  if (currentLineLength) {
+    currentLine
+      .attr('stroke-dasharray', `${currentLineLength},${currentLineLength}`)
+      .attr('stroke-dashoffset', currentLineLength)
       .transition()
       .duration(1500)
       .attr('stroke-dashoffset', 0);
-    
-    // Add data points with tooltip functionality
-    const tooltip = d3.select('body').append('div')
-      .attr('class', 'focus-tooltip')
-      .style('position', 'absolute')
-      .style('visibility', 'hidden')
-      .style('background-color', '#262b3c')
-      .style('color', '#fff')
-      .style('padding', '8px')
-      .style('border-radius', '4px')
-      .style('font-size', '12px')
-      .style('box-shadow', '0 0 10px rgba(0, 0, 0, 0.2)')
-      .style('pointer-events', 'none')
-      .style('z-index', '1000');
-    
-    linesGroup.selectAll('.current-point')
-      .data(currentWeekData)
-      .enter()
-      .append('circle')
-      .attr('class', 'current-point')
-      .attr('cx', d => xScale(d.date))
-      .attr('cy', d => yScale(d.value))
-      .attr('r', 4)
-      .attr('fill', '#3366ff')
-      .style('opacity', 0)
-      .transition()
-      .delay((d, i) => i * 200)
-      .duration(300)
-      .style('opacity', 1)
-      .on('end', function() {
-        // Add event listeners after animation
-        d3.select(this)
-          .on('mouseover', function(event, d) {
-            // Enlarge the point
-            d3.select(this)
-              .transition()
-              .duration(100)
-              .attr('r', 6);
-            
-            // Show tooltip
-            tooltip
-              .style('visibility', 'visible')
-              .html(`
-                <div style="font-weight: bold;">${d.date.toLocaleDateString()}</div>
-                <div>Focus Score: ${d.value}%</div>
-              `);
-          })
-          .on('mousemove', function(event) {
-            tooltip
-              .style('top', (event.pageY - 10) + 'px')
-              .style('left', (event.pageX + 10) + 'px');
-          })
-          .on('mouseout', function() {
-            // Restore point size
-            d3.select(this)
-              .transition()
-              .duration(100)
-              .attr('r', 4);
-            
-            // Hide tooltip
-            tooltip.style('visibility', 'hidden');
-          });
-      });
   }
+  
+  // Add data points for current week
+  chart.selectAll('.data-point')
+    .data(currentWeekData.filter(d => d.value !== null))
+    .enter()
+    .append('circle')
+    .attr('class', 'data-point')
+    .attr('cx', d => xScale(d.date))
+    .attr('cy', d => yScale(d.value))
+    .attr('r', 4)
+    .attr('fill', '#3366ff')
+    .attr('stroke', '#fff')
+    .attr('stroke-width', 1)
+    .style('opacity', 0)
+    .transition()
+    .delay((d, i) => i * 150)
+    .duration(300)
+    .style('opacity', 1);
   
   // Add legend
   const legend = svg.append('g')
-    .attr('class', 'legend')
-    .attr('transform', `translate(${width - 150}, 20)`);
+    .attr('class', 'chart-legend')
+    .attr('transform', `translate(${containerWidth - margin.right - 120}, ${margin.top})`);
   
-  // Current week legend
-  legend.append('circle')
-    .attr('cx', 0)
-    .attr('cy', 0)
-    .attr('r', 5)
-    .attr('fill', '#3366ff');
-    
-  legend.append('text')
-    .attr('x', 10)
-    .attr('y', 4)
-    .attr('fill', '#ffffff')
-    .style('font-size', '12px')
-    .text('This week');
+  // Current week legend item
+  const currentLegend = legend.append('g')
+    .attr('class', 'legend-item');
   
-  // Previous week legend
-  legend.append('circle')
-    .attr('cx', 90)
-    .attr('cy', 0)
-    .attr('r', 5)
-    .attr('fill', '#ff9966');
-    
-  legend.append('text')
-    .attr('x', 100)
-    .attr('y', 4)
+  currentLegend.append('line')
+    .attr('x1', 0)
+    .attr('x2', 15)
+    .attr('y1', 5)
+    .attr('y2', 5)
+    .attr('stroke', '#3366ff')
+    .attr('stroke-width', 3);
+  
+  currentLegend.append('text')
+    .attr('x', 20)
+    .attr('y', 9)
     .attr('fill', '#ffffff')
+    .attr('font-size', '12px')
+    .text('This Week');
+  
+  // Previous week legend item
+  const previousLegend = legend.append('g')
+    .attr('class', 'legend-item')
+    .attr('transform', 'translate(0, 20)');
+  
+  previousLegend.append('line')
+    .attr('x1', 0)
+    .attr('x2', 15)
+    .attr('y1', 5)
+    .attr('y2', 5)
+    .attr('stroke', '#ff9966')
+    .attr('stroke-width', 2)
+    .attr('stroke-dasharray', '5,5');
+  
+  previousLegend.append('text')
+    .attr('x', 20)
+    .attr('y', 9)
+    .attr('fill', '#ffffff')
+    .attr('font-size', '12px')
+    .text('Last Week');
+  
+  // Add tooltips for data points
+  const tooltip = d3.select(chartElement)
+    .append('div')
+    .attr('class', 'chart-tooltip')
+    .style('position', 'absolute')
+    .style('visibility', 'hidden')
+    .style('background-color', '#262b3c')
+    .style('color', '#fff')
+    .style('padding', '8px')
+    .style('border-radius', '4px')
     .style('font-size', '12px')
-    .text('Last week');
-    
-  // Add window resize handler
+    .style('box-shadow', '0 0 10px rgba(0, 0, 0, 0.2)')
+    .style('pointer-events', 'none')
+    .style('z-index', '100');
+  
+  // Add tooltip interaction to data points
+  chart.selectAll('.data-point')
+    .on('mouseover', function(event, d) {
+      // Enlarge the point
+      d3.select(this)
+        .transition()
+        .duration(100)
+        .attr('r', 6);
+      
+      // Show tooltip
+      tooltip
+        .style('visibility', 'visible')
+        .html(`
+          <div style="font-weight: bold;">${d.date.toLocaleDateString()}</div>
+          <div>Focus Score: ${d.value}%</div>
+        `)
+        .style('left', `${event.pageX + 10}px`)
+        .style('top', `${event.pageY - 10}px`);
+    })
+    .on('mousemove', function(event) {
+      tooltip
+        .style('left', `${event.pageX + 10}px`)
+        .style('top', `${event.pageY - 10}px`);
+    })
+    .on('mouseout', function() {
+      // Restore point size
+      d3.select(this)
+        .transition()
+        .duration(100)
+        .attr('r', 4);
+      
+      // Hide tooltip
+      tooltip.style('visibility', 'hidden');
+    });
+  
+  // Add window resize handler using debounce technique
   const resizeHandler = debounce(() => {
-    // Get new width
     const newWidth = chartElement.clientWidth;
-    if (newWidth === width) return; // No change
-    
-    // Update chart with new dimensions
-    updateD3ChartDimensions(chartElement, currentWeekData, previousWeekData);
+    if (newWidth !== containerWidth) {
+      // Redraw chart on significant size change
+      createD3FocusChart(chartElement, currentWeekData, previousWeekData);
+    }
   }, 250);
   
   window.addEventListener('resize', resizeHandler);
 }
 
-/**
- * Update chart dimensions on resize
- */
-function updateD3ChartDimensions(chartElement, currentData, previousData) {
-  // Remove existing chart
-  chartElement.innerHTML = '';
-  
-  // Recreate with new dimensions
-  createD3FocusChart(chartElement, currentData, previousData);
-}
-
-/**
- * Create placeholder chart when no data is available
- * @param {HTMLElement} chartElement - Container element for the chart
- */
+// Create a placeholder chart when no data is available
 function createPlaceholderChart(chartElement) {
+  if (!window.d3) {
+    console.error('D3.js not loaded');
+    return;
+  }
+  
+  const d3 = window.d3;
+  
   // Clear previous content
   chartElement.innerHTML = '';
   
-  const width = chartElement.clientWidth || 800;
-  const height = 300;
+  // Set up dimensions
+  const containerWidth = chartElement.clientWidth || 800;
+  const containerHeight = 300;
+  const margin = { top: 30, right: 60, bottom: 40, left: 50 };
+  const width = containerWidth - margin.left - margin.right;
+  const height = containerHeight - margin.top - margin.bottom;
   
-  // Create SVG with D3
+  // Create SVG element
   const svg = d3.select(chartElement)
     .append('svg')
-    .attr('width', '100%')
-    .attr('height', height)
-    .attr('viewBox', `0 0 ${width} ${height}`);
+    .attr('width', containerWidth)
+    .attr('height', containerHeight)
+    .attr('viewBox', `0 0 ${containerWidth} ${containerHeight}`)
+    .attr('preserveAspectRatio', 'xMidYMid meet');
   
-  // Add grid lines
-  for (let i = 1; i <= 5; i++) {
-    svg.append('line')
-      .attr('x1', 0)
-      .attr('y1', i * 50)
-      .attr('x2', width)
-      .attr('y2', i * 50)
-      .attr('stroke', 'rgba(255,255,255,0.1)')
-      .attr('stroke-width', 1);
-  }
+  // Create group element for the chart
+  const chart = svg.append('g')
+    .attr('transform', `translate(${margin.left}, ${margin.top})`);
   
-  // Add X-axis labels (days of week)
+  // Add background grid
+  chart.append('g')
+    .attr('class', 'grid-lines')
+    .selectAll('line')
+    .data(d3.range(0, 6))
+    .enter()
+    .append('line')
+    .attr('x1', 0)
+    .attr('x2', width)
+    .attr('y1', d => d * height / 5)
+    .attr('y2', d => d * height / 5)
+    .attr('stroke', 'rgba(255, 255, 255, 0.1)')
+    .attr('stroke-dasharray', '3,3');
+  
+  // Add X axis with weekdays
   const days = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'];
-  days.forEach((day, i) => {
-    svg.append('text')
-      .attr('x', (i * width / 6) + (width / 12))
-      .attr('y', 270)
-      .attr('text-anchor', 'middle')
-      .attr('fill', '#b0b7c3')
-      .attr('font-size', 12)
-      .text(day);
-  });
+  chart.append('g')
+    .attr('class', 'x-axis')
+    .attr('transform', `translate(0, ${height})`)
+    .selectAll('text')
+    .data(days)
+    .enter()
+    .append('text')
+    .attr('x', (d, i) => i * width / 6)
+    .attr('y', 20)
+    .attr('text-anchor', 'middle')
+    .attr('fill', '#b0b7c3')
+    .attr('font-size', '12px')
+    .text(d => d);
   
-  // Create sample curves
-  const currentPoints = [];
-  const previousPoints = [];
+  // Add Y axis labels
+  chart.append('g')
+    .attr('class', 'y-axis')
+    .selectAll('text')
+    .data([0, 25, 50, 75, 100])
+    .enter()
+    .append('text')
+    .attr('x', -10)
+    .attr('y', d => height - d * height / 100)
+    .attr('text-anchor', 'end')
+    .attr('dominant-baseline', 'middle')
+    .attr('fill', '#b0b7c3')
+    .attr('font-size', '12px')
+    .text(d => `${d}%`);
   
-  // Generate random points
-  for (let i = 0; i < 7; i++) {
-    currentPoints.push([i * width / 6, 100 + Math.random() * 100]);
-    previousPoints.push([i * width / 6, 130 + Math.random() * 70]);
-  }
+  // Generate sample data for placeholder lines
+  const generatePlaceholderData = () => {
+    const data = [];
+    for (let i = 0; i < 7; i++) {
+      data.push([i * width / 6, height - (Math.random() * 30 + 40) * height / 100]);
+    }
+    return data;
+  };
   
-  // Create curve generators
-  const lineGenerator = d3.line()
-    .x(d => d[0])
-    .y(d => d[1])
-    .curve(d3.curveBasis);
+  const currentData = generatePlaceholderData();
+  const previousData = generatePlaceholderData();
+  
+  // Create line generator
+  const line = d3.line()
+    .curve(d3.curveMonotoneX);
+  
+  // Add previous week line (dashed)
+  chart.append('path')
+    .attr('d', line(previousData))
+    .attr('fill', 'none')
+    .attr('stroke', '#ff9966')
+    .attr('stroke-width', 2)
+    .attr('stroke-dasharray', '5,5')
+    .attr('opacity', 0.5);
   
   // Add current week line
-  svg.append('path')
-    .attr('d', lineGenerator(currentPoints))
+  chart.append('path')
+    .attr('d', line(currentData))
     .attr('fill', 'none')
+    .attr('stroke', '#3366ff')
+    .attr('stroke-width', 3)
+    .attr('opacity', 0.7);
+  
+  // Add the "No data" message
+  chart.append('text')
+    .attr('x', width / 2)
+    .attr('y', height / 2)
+    .attr('text-anchor', 'middle')
+    .attr('fill', 'rgba(255, 255, 255, 0.5)')
+    .attr('font-size', '16px')
+    .text('No focus data available yet');
+  
+  // Add legend
+  const legend = svg.append('g')
+    .attr('class', 'chart-legend')
+    .attr('transform', `translate(${containerWidth - margin.right - 120}, ${margin.top})`);
+  
+  // Current week legend item
+  const currentLegend = legend.append('g')
+    .attr('class', 'legend-item');
+  
+  currentLegend.append('line')
+    .attr('x1', 0)
+    .attr('x2', 15)
+    .attr('y1', 5)
+    .attr('y2', 5)
     .attr('stroke', '#3366ff')
     .attr('stroke-width', 3);
   
-  // Add previous week line
-  svg.append('path')
-    .attr('d', lineGenerator(previousPoints))
-    .attr('fill', 'none')
+  currentLegend.append('text')
+    .attr('x', 20)
+    .attr('y', 9)
+    .attr('fill', '#ffffff')
+    .attr('font-size', '12px')
+    .text('This Week');
+  
+  // Previous week legend item
+  const previousLegend = legend.append('g')
+    .attr('class', 'legend-item')
+    .attr('transform', 'translate(0, 20)');
+  
+  previousLegend.append('line')
+    .attr('x1', 0)
+    .attr('x2', 15)
+    .attr('y1', 5)
+    .attr('y2', 5)
     .attr('stroke', '#ff9966')
-    .attr('stroke-width', 3)
+    .attr('stroke-width', 2)
     .attr('stroke-dasharray', '5,5');
   
-  // Add legend
-  svg.append('circle')
-    .attr('cx', width - 150)
-    .attr('cy', 20)
-    .attr('r', 5)
-    .attr('fill', '#3366ff');
-    
-  svg.append('text')
-    .attr('x', width - 140)
-    .attr('y', 25)
+  previousLegend.append('text')
+    .attr('x', 20)
+    .attr('y', 9)
     .attr('fill', '#ffffff')
-    .attr('font-size', 12)
-    .text('This week');
-    
-  svg.append('circle')
-    .attr('cx', width - 60)
-    .attr('cy', 20)
-    .attr('r', 5)
-    .attr('fill', '#ff9966');
-    
-  svg.append('text')
-    .attr('x', width - 50)
-    .attr('y', 25)
-    .attr('fill', '#ffffff')
-    .attr('font-size', 12)
-    .text('Last week');
+    .attr('font-size', '12px')
+    .text('Last Week');
 }
 
-/**
- * Debounce function to limit frequency of function calls
- */
+// Utility function for debouncing events
 function debounce(func, wait) {
   let timeout;
-  return function executedFunction(...args) {
-    const later = () => {
-      clearTimeout(timeout);
-      func(...args);
-    };
+  return function() {
+    const context = this;
+    const args = arguments;
     clearTimeout(timeout);
-    timeout = setTimeout(later, wait);
+    timeout = setTimeout(() => {
+      func.apply(context, args);
+    }, wait);
   };
 }
 

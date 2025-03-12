@@ -1,183 +1,162 @@
-/* src/renderer/assets/charts.css */
+/* Add these styles to your CSS file (renderer/assets/charts.css) */
 
-/* Chart Container */
+/* Chart container styling */
 .chart-container {
-    background-color: var(--card-background);
-    border-radius: var(--border-radius);
-    padding: var(--spacing-md);
-    box-shadow: 0 2px 8px var(--shadow-color);
-    margin-bottom: var(--spacing-lg);
-  }
-  
-  .chart-container h3 {
-    margin-top: 0;
-    margin-bottom: var(--spacing-md);
-    font-size: 1.25rem;
-    font-weight: 500;
-    color: var(--text-primary);
-  }
-  
-  .chart {
+    position: relative;
     width: 100%;
     height: 300px;
-    position: relative;
     overflow: hidden;
+    background-color: var(--card-background, #262b3c);
+    border-radius: var(--border-radius, 8px);
+    padding: 1rem;
+    margin-bottom: 1.5rem;
   }
   
-  /* Chart Controls */
-  .chart-controls {
-    display: flex;
-    justify-content: flex-end;
-    margin-bottom: var(--spacing-sm);
+  /* Chart SVG element */
+  #focus-chart svg {
+    width: 100%;
+    height: 100%;
+    overflow: visible;
   }
   
-  .time-range-selector {
-    padding: 0.35rem 0.5rem;
-    border-radius: 4px;
-    border: 1px solid var(--divider-color);
-    background-color: var(--elevated-background);
-    color: var(--text-primary);
-    font-size: 0.875rem;
-    cursor: pointer;
+  /* Grid lines */
+  .grid-lines line {
+    stroke: var(--chart-grid, rgba(255, 255, 255, 0.1));
+    stroke-dasharray: 3,3;
+    shape-rendering: crispEdges;
   }
   
-  /* Chart Header */
-  .chart-header {
-    display: flex;
-    justify-content: space-between;
-    align-items: center;
-    margin-bottom: var(--spacing-sm);
+  /* Axis styling */
+  .x-axis line,
+  .y-axis line {
+    stroke: var(--chart-grid, rgba(255, 255, 255, 0.1));
+    shape-rendering: crispEdges;
   }
   
-  /* Chart Footer */
-  .chart-footer {
-    display: flex;
-    justify-content: space-between;
-    margin-top: var(--spacing-md);
-    padding-top: var(--spacing-sm);
-    border-top: 1px solid var(--divider-color);
+  .x-axis path,
+  .y-axis path {
+    display: none;
   }
   
-  .chart-legend {
-    display: flex;
-    align-items: center;
+  .x-axis text,
+  .y-axis text {
+    font-size: 12px;
+    fill: var(--text-secondary, #b0b7c3);
   }
   
-  .legend-item {
-    display: flex;
-    align-items: center;
-    margin-right: var(--spacing-md);
-  }
-  
-  .legend-color {
-    width: 12px;
-    height: 12px;
-    border-radius: 50%;
-    margin-right: 6px;
-  }
-  
-  .legend-label {
-    font-size: 0.8125rem;
-    color: var(--text-secondary);
-  }
-  
-  .chart-metrics {
-    display: flex;
-    gap: var(--spacing-md);
-  }
-  
-  .metric {
-    display: flex;
-    flex-direction: column;
-    align-items: center;
-  }
-  
-  .metric-value {
-    font-size: 1.25rem;
-    font-weight: 600;
-    color: var(--text-primary);
-  }
-  
-  .metric-label {
-    font-size: 0.75rem;
-    color: var(--text-secondary);
-  }
-  
-  /* Chart Elements - D3 Related */
-  .focus-chart .domain {
-    stroke: var(--divider-color);
-  }
-  
-  .focus-chart .tick line {
-    stroke: var(--divider-color);
-  }
-  
-  .focus-chart .tick text {
-    fill: var(--text-secondary);
-    font-size: 0.75rem;
-  }
-  
-  .focus-chart-tooltip {
-    transition: all 0.1s ease-out;
-  }
-  
-  /* Empty State */
-  .chart-empty-state {
-    display: flex;
-    flex-direction: column;
-    align-items: center;
-    justify-content: center;
-    height: 200px;
-    color: var(--text-disabled);
-    text-align: center;
-  }
-  
-  .chart-empty-state .material-icons {
-    font-size: 48px;
-    margin-bottom: var(--spacing-sm);
-    opacity: 0.5;
-  }
-  
-  /* Focus line variations */
+  /* Lines styling */
   .focus-line {
+    stroke: var(--primary-color, #3366ff);
     stroke-width: 3px;
+    fill: none;
   }
   
   .previous-line {
+    stroke: var(--secondary-color, #ff9966);
     stroke-width: 2px;
+    stroke-dasharray: 5,5;
+    fill: none;
     opacity: 0.7;
+  }
+  
+  /* Data points */
+  .data-point {
+    fill: var(--primary-color, #3366ff);
+    stroke: var(--card-background, #262b3c);
+    stroke-width: 2px;
+    cursor: pointer;
+    transition: r 0.2s ease;
+  }
+  
+  /* Tooltip styling */
+  .chart-tooltip {
+    position: absolute;
+    padding: 0.5rem;
+    background-color: var(--elevated-background, #2d3348);
+    border: 1px solid var(--divider-color, rgba(255, 255, 255, 0.12));
+    border-radius: 4px;
+    font-size: 12px;
+    color: var(--text-primary, #ffffff);
+    pointer-events: none;
+    opacity: 0;
+    transition: opacity 0.2s ease;
+    z-index: 1000;
+    box-shadow: 0 4px 8px rgba(0, 0, 0, 0.3);
+  }
+  
+  .chart-tooltip.visible {
+    opacity: 1;
+  }
+  
+  /* Legend styling */
+  .chart-legend {
+    font-size: 12px;
+  }
+  
+  .legend-item text {
+    fill: var(--text-secondary, #b0b7c3);
+  }
+  
+  /* Empty state message */
+  .chart-empty-state {
+    position: absolute;
+    top: 50%;
+    left: 50%;
+    transform: translate(-50%, -50%);
+    text-align: center;
+    color: var(--text-disabled, #6c7283);
+  }
+  
+  /* Error message */
+  .chart-error {
+    position: absolute;
+    top: 50%;
+    left: 50%;
+    transform: translate(-50%, -50%);
+    text-align: center;
+    color: var(--negative-color, #ff3b30);
+  }
+  
+  /* Theme-specific adjustments */
+  .dark-theme .focus-line {
+    stroke: #3366ff;
+  }
+  
+  .dark-theme .previous-line {
+    stroke: #ff9966;
+  }
+  
+  .light-theme .focus-line {
+    stroke: #2349cc;
+  }
+  
+  .light-theme .previous-line {
+    stroke: #e67e4d;
   }
   
   /* Responsive adjustments */
   @media (max-width: 768px) {
-    .chart-footer {
-      flex-direction: column;
-      gap: var(--spacing-md);
+    .chart-container {
+      height: 250px;
     }
     
     .chart-legend {
-      justify-content: center;
-      margin-bottom: var(--spacing-sm);
+      font-size: 10px;
     }
     
-    .chart-metrics {
-      justify-content: center;
+    .x-axis text,
+    .y-axis text {
+      font-size: 10px;
     }
   }
   
   @media (max-width: 480px) {
-    .chart-header {
-      flex-direction: column;
-      align-items: flex-start;
-      gap: var(--spacing-sm);
+    .chart-container {
+      height: 200px;
     }
     
-    .chart-controls {
-      width: 100%;
-      justify-content: flex-start;
-    }
-    
-    .time-range-selector {
-      width: 100%;
+    .chart-legend {
+      transform: scale(0.9);
+      transform-origin: right top;
     }
   }
