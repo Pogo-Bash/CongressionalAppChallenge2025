@@ -105,21 +105,34 @@ Your study data automatically synchronizes between mobile and desktop applicatio
 ### Project Structure
 
 ```
-curriculum-ai/
-├── desktop/               # Electron desktop app
-│   ├── main.js            # Electron main process
-│   ├── preload.js         # Preload script for secure API access
-│   └── src/               # Renderer process code
-├── mobile/                # Cordova mobile app
-│   ├── config.xml         # Cordova configuration
-│   ├── platforms/         # Platform-specific code
-│   └── www/               # Web assets for mobile
-├── shared/                # Shared code between platforms
-│   ├── js/                # Common JavaScript modules
-│   ├── css/               # Shared styles
-│   └── assets/            # Images and other assets
-├── tests/                 # Test files
-└── docs/                  # Documentation
+CongressionalAppChallenge2025/
+├── .github/                # GitHub workflows and actions
+│   └── workflows/          # CI/CD pipeline configurations
+├── CongressionalAppChallenge2025/
+│   ├── .vscode/            # VS Code configuration files
+│   ├── src/                # Source code
+│   │   ├── main/           # Electron main process
+│   │   ├── preload/        # Preload scripts for secure API access
+│   │   └── renderer/       # Electron renderer process
+│   ├── mobile/             # Cordova mobile app
+│   │   ├── config.xml      # Cordova configuration
+│   │   ├── platforms/      # Platform-specific code
+│   │   └── www/            # Web assets for mobile
+│   ├── shared/             # Shared code between platforms
+│   │   ├── js/             # Common JavaScript modules
+│   │   ├── css/            # Shared styles
+│   │   └── assets/         # Images and other assets
+│   ├── tests/              # Test files
+│   ├── docs/               # Documentation
+│   ├── scripts/            # Utility scripts
+│   ├── .gitignore          # Git ignore file
+│   ├── electron-builder.yml# Electron builder configuration
+│   ├── eslint.config.mjs   # ESLint configuration
+│   ├── LICENSE             # License file
+│   ├── package.json        # NPM package configuration
+│   ├── README.md           # Project README file
+│   └── vite.config.ts      # Vite configuration
+└── .env                    # Environment variables
 ```
 
 ### Branch Strategy
