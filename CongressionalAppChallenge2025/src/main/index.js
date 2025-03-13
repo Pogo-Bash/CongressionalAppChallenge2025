@@ -62,7 +62,8 @@ function createWindow() {
       url.includes('accounts.google.com') ||
       url.includes('apis.google.com/js/api') ||
       url.includes('google.com/signin') ||
-      url.includes('googleusercontent.com')
+      url.includes('googleusercontent.com') ||
+      url.startsWith('https://')
     ) {
       console.log('Allowing internal window for auth URL:', url)
       return { action: 'allow' }
@@ -78,6 +79,27 @@ function createWindow() {
     mainWindow.loadURL(process.env['ELECTRON_RENDERER_URL'])
   } else {
     mainWindow.loadFile(join(__dirname, '../renderer/index.html'))
+  }
+
+  // FIXED: Changed isDevelopment to !is.dev for production environment
+  if (!is.dev) {
+    mainWindow.webContents.session.webRequest.onHeadersReceived((details, callback) => {
+      callback({
+        responseHeaders: {
+          ...details.responseHeaders,
+          'Content-Security-Policy': [
+            "default-src 'self'; " +
+              "script-src 'self' 'unsafe-eval' https://cdn.jsdelivr.net https://*.googleapis.com https://*.firebaseio.com https://apis.google.com; " +
+              "font-src 'self' https://fonts.gstatic.com; " +
+              "img-src 'self' data: https://*.googleusercontent.com; " +
+              "media-src 'self' blob:; " +
+              "connect-src 'self' https://cdn.jsdelivr.net https://*.googleapis.com https://classroom.googleapis.com https://*.firebaseio.com https://identitytoolkit.googleapis.com https://securetoken.googleapis.com https://tfhub.dev https://www.kaggle.com; " +
+              +"style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; " +
+              "frame-src 'self' https://*.firebaseapp.com https://accounts.google.com;"
+          ]
+        }
+      })
+    })
   }
 
   // IPC handlers for window controls
@@ -146,9 +168,7 @@ ipcMain.handle('request-camera-permission', async () => {
   }
 })
 
-// NEW ADDITION: Request proxy handler to bypass CORS issues
-// In main.js
-// In main.js
+// Request proxy handler to bypass CORS issues
 ipcMain.handle('proxy-request', async (event, { url, options }) => {
   console.log(`Proxying request to: ${url}`)
 

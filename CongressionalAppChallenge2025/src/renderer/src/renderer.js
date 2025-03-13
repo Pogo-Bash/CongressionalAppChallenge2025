@@ -1,8 +1,13 @@
 // Import theme manager
 import { themeManager } from './theme-manager.js'
 import * as tf from '@tensorflow/tfjs'
-import { updateFocusChart, createD3FocusChart, createPlaceholderChart, debounce } from './focus-chart.js';
-import * as d3 from 'd3';
+import {
+  updateFocusChart,
+  createD3FocusChart,
+  createPlaceholderChart,
+  debounce
+} from './focus-chart.js'
+import * as d3 from 'd3'
 
 // For communication with Electron main process
 const { ipcRenderer } = window.electron || {}
@@ -77,59 +82,75 @@ let focusSessionsCache = []
 
 // TensorFlow Model
 
-let focusTrackingInitialized = false
+// Declare variables at the module level
 let tensorflowModel = null
 let faceDetector = null
+let focusTrackingInitialized = false
 
+// Replace the initializeTensorFlow function in your renderer.js with this updated version
+// Replace the initializeTensorFlow function in your renderer.js with this fixed version
 async function initializeTensorFlow() {
   if (focusTrackingInitialized) return true
 
   try {
     console.log('Initializing TensorFlow.js...')
 
-    // Import TensorFlow.js dynamically
+    // Explicitly import both necessary packages
     const tf = await import('@tensorflow/tfjs')
+    console.log('TensorFlow core loaded successfully')
 
-    // Set backend based on platform
-    const backendNames = tf.engine().backendNames()
-    console.log('Available backends:', backendNames)
+    // Import face detection
+    const faceDetection = await import('@tensorflow-models/face-detection')
+    console.log('Face detection module loaded successfully')
 
-    // Try to use WebGL if available (much faster)
-    if (backendNames.includes('webgl')) {
-      try {
-        console.log('Setting WebGL backend...')
-        await tf.setBackend('webgl')
-        // Optimize WebGL for memory
-        tf.env().set('WEBGL_FORCE_F16_TEXTURES', true)
-        tf.env().set('WEBGL_CPU_FORWARD', true)
-        console.log('Using WebGL backend')
-      } catch (error) {
-        console.warn('WebGL backend failed, falling back to CPU:', error)
-        await tf.setBackend('cpu')
-      }
-    } else {
-      await tf.setBackend('cpu')
-      console.log('Using CPU backend')
+    // Check for valid imports
+    if (!faceDetection || !faceDetection.SupportedModels) {
+      console.error('Face detection module missing SupportedModels:', faceDetection)
+      throw new Error('Face detection module loaded incorrectly')
     }
 
-    // Import face-detection model dynamically
-    const faceDetection = await import('@tensorflow-models/face-detection')
+    // Choose appropriate backend
+    if (tf.engine().backendNames().includes('webgl')) {
+      await tf.setBackend('webgl')
+      console.log('Using WebGL backend')
+    } else {
+      await tf.setBackend('cpu')
+      console.log('Using CPU backend (WebGL not available)')
+    }
 
-    // Load face detection model (BlazeFace is lighter/faster)
+    // Log available models
+    console.log('Available face detection models:', Object.keys(faceDetection.SupportedModels))
+
+    // Create model config - FIXED: Adding the required runtime property
     const modelConfig = {
+      runtime: 'tfjs', // Required parameter
       modelType: 'short',
-      runtime: 'tfjs',
       maxFaces: 1
     }
 
-    console.log('Loading face detection model...')
-    faceDetector = await faceDetection.createDetector(
-      faceDetection.SupportedModels.BlazeFace,
-      modelConfig
-    )
+    // Use MediaPipeFaceDetector instead of BlazeFace
+    const modelName = faceDetection.SupportedModels.MediaPipeFaceDetector
 
-    console.log('TensorFlow and face detection initialized successfully')
+    // Make sure model name is valid
+    if (!modelName) {
+      throw new Error('MediaPipeFaceDetector model not available in SupportedModels')
+    }
+
+    console.log('Creating detector with model:', modelName, 'and config:', modelConfig)
+
+    // Create the detector
+    faceDetector = await faceDetection.createDetector(modelName, modelConfig)
+
+    if (!faceDetector) {
+      throw new Error('Failed to create face detector')
+    }
+
+    console.log('Face detector created successfully')
+
+    // Store the model
+    tensorflowModel = faceDetector
     focusTrackingInitialized = true
+
     return true
   } catch (error) {
     console.error('Failed to initialize TensorFlow:', error)
@@ -2867,23 +2888,23 @@ function initializeAuthUI() {
 }
 
 function initializeFocusChart() {
-  console.log('Initializing focus chart...');
-  const chartElement = document.getElementById('focus-chart');
-  
+  console.log('Initializing focus chart...')
+  const chartElement = document.getElementById('focus-chart')
+
   if (!chartElement) {
-    console.warn('Focus chart container not found');
-    return;
+    console.warn('Focus chart container not found')
+    return
   }
-  
+
   // Load focus session data
-  const sessions = loadFocusSessions();
-  
+  const sessions = loadFocusSessions()
+
   if (sessions && sessions.length > 0) {
-    console.log(`Creating chart with ${sessions.length} sessions`);
-    updateFocusChart(sessions);
+    console.log(`Creating chart with ${sessions.length} sessions`)
+    updateFocusChart(sessions)
   } else {
-    console.log('No session data available, creating placeholder chart');
-    createPlaceholderChart(chartElement);
+    console.log('No session data available, creating placeholder chart')
+    createPlaceholderChart(chartElement)
   }
 }
 
@@ -2891,42 +2912,45 @@ function initializeFocusChart() {
 function createFocusChart() {
   // Check if D3.js is already loaded
   if (window.d3) {
-    initializeFocusChart();
+    initializeFocusChart()
   } else {
     // D3.js needs to be loaded
-    console.log('D3.js not loaded, attempting to load it...');
-    
+    console.log('D3.js not loaded, attempting to load it...')
+
     // Try to load D3.js dynamically
-    const script = document.createElement('script');
-    script.src = 'https://cdn.jsdelivr.net/npm/d3@7/dist/d3.min.js';
-    script.async = true;
+    const script = document.createElement('script')
+    script.src = 'https://cdn.jsdelivr.net/npm/d3@7/dist/d3.min.js'
+    script.async = true
     script.onload = () => {
-      console.log('D3.js loaded successfully');
-      initializeFocusChart();
-    };
+      console.log('D3.js loaded successfully')
+      initializeFocusChart()
+    }
     script.onerror = () => {
-      console.error('Failed to load D3.js');
+      console.error('Failed to load D3.js')
       // Show a message in the chart area
-      const chartElement = document.getElementById('focus-chart');
+      const chartElement = document.getElementById('focus-chart')
       if (chartElement) {
-        chartElement.innerHTML = '<div class="chart-error">Chart library could not be loaded</div>';
+        chartElement.innerHTML = '<div class="chart-error">Chart library could not be loaded</div>'
       }
-    };
-    
-    document.head.appendChild(script);
+    }
+
+    document.head.appendChild(script)
   }
 }
 // Make sure the chart updates when the window is resized
-window.addEventListener('resize', debounce(() => {
-  // Only update if chart is visible (in active section)
-  const chartElement = document.getElementById('focus-chart');
-  const dashboardSection = document.getElementById('dashboard-section');
-  
-  if (chartElement && dashboardSection && dashboardSection.classList.contains('active')) {
-    console.log('Window resized, updating chart');
-    initializeFocusChart();
-  }
-}, 250));
+window.addEventListener(
+  'resize',
+  debounce(() => {
+    // Only update if chart is visible (in active section)
+    const chartElement = document.getElementById('focus-chart')
+    const dashboardSection = document.getElementById('dashboard-section')
+
+    if (chartElement && dashboardSection && dashboardSection.classList.contains('active')) {
+      console.log('Window resized, updating chart')
+      initializeFocusChart()
+    }
+  }, 250)
+)
 
 // Load curriculum data from Google Classroom
 async function loadCurriculumData() {
@@ -4174,10 +4198,10 @@ document.addEventListener('DOMContentLoaded', () => {
 
   // Initialize the application
   initApp()
-  
+
   setTimeout(() => {
-    createFocusChart();
-  }, 100);
+    createFocusChart()
+  }, 100)
 })
 
 // Export services for use in other modules
