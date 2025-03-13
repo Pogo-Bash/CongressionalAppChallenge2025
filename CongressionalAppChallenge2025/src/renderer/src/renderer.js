@@ -1465,102 +1465,189 @@ const classroomService = {
   }
 }
 
-
 const tensorflowService = {
+  model: null,
+  initialized: false,
+
   async initialize() {
-    console.log('Initializing TensorFlow.js...');
+    console.log('Initializing TensorFlow.js...')
 
     // Explicitly import both necessary packages
-    const tf = await import('@tensorflow/tfjs');
-    console.log('TensorFlow core loaded successfully');
+    const tf = await import('@tensorflow/tfjs')
+    console.log('TensorFlow core loaded successfully')
 
     // Import face detection
-    const faceDetection = await import('@tensorflow-models/face-detection');
-    console.log('Face detection module loaded successfully');
+    const faceDetection = await import('@tensorflow-models/face-detection')
+    console.log('Face detection module loaded successfully')
 
     // Check for valid imports
     if (!faceDetection || !faceDetection.SupportedModels) {
-      console.error('Face detection module missing SupportedModels:', faceDetection);
-      throw new Error('Face detection module loaded incorrectly');
+      console.error('Face detection module missing SupportedModels:', faceDetection)
+      throw new Error('Face detection module loaded incorrectly')
     }
 
     // Choose appropriate backend
     if (tf.engine().backendNames().includes('webgl')) {
-      await tf.setBackend('webgl');
-      console.log('Using WebGL backend');
+      await tf.setBackend('webgl')
+      console.log('Using WebGL backend')
     } else {
-      await tf.setBackend('cpu');
-      console.log('Using CPU backend (WebGL not available)');
+      await tf.setBackend('cpu')
+      console.log('Using CPU backend (WebGL not available)')
     }
 
     // Log available models
-    console.log('Available face detection models:', Object.keys(faceDetection.SupportedModels));
+    console.log('Available face detection models:', Object.keys(faceDetection.SupportedModels))
 
     // Create model config - FIXED: Adding the required runtime property
     const modelConfig = {
       runtime: 'tfjs', // Required parameter
       modelType: 'short',
       maxFaces: 1
-    };
+    }
 
     // Use MediaPipeFaceDetector instead of BlazeFace
-    const modelName = faceDetection.SupportedModels.MediaPipeFaceDetector;
+    const modelName = faceDetection.SupportedModels.MediaPipeFaceDetector
 
     // Make sure model name is valid
     if (!modelName) {
-      throw new Error('MediaPipeFaceDetector model not available in SupportedModels');
+      throw new Error('MediaPipeFaceDetector model not available in SupportedModels')
     }
 
-    console.log('Creating detector with model:', modelName, 'and config:', modelConfig);
+    console.log('Creating detector with model:', modelName, 'and config:', modelConfig)
 
     // Create the detector
-    const faceDetector = await faceDetection.createDetector(modelName, modelConfig);
+    const faceDetector = await faceDetection.createDetector(modelName, modelConfig)
 
     if (!faceDetector) {
-      throw new Error('Failed to create face detector');
+      throw new Error('Failed to create face detector')
     }
 
-    console.log('Face detector created successfully');
+    console.log('Face detector created successfully')
 
     // Store the model
-    this.model = faceDetector;
-    this.initialized = true;
+    this.model = faceDetector
+    this.initialized = true
 
-    return true;
+    return true
   },
 
   async detectBlinks(videoElement) {
     if (!this.initialized || !this.model) {
-      throw new Error('TensorFlow model is not initialized');
+      throw new Error('TensorFlow model is not initialized')
     }
 
-    const predictions = await this.model.estimateFaces(videoElement, false);
-    const faceDetected = predictions.length > 0;
-    const isBlinking = faceDetected && predictions[0].annotations.leftEyeUpper0[3][1] - predictions[0].annotations.leftEyeLower0[3][1] < 0.02;
+    try {
+      const predictions = await this.model.estimateFaces(videoElement, false)
 
-    return {
-      faceDetected,
-      isBlinking,
-      keypoints: predictions[0]?.keypoints,
-      eyeOpenness: predictions[0]?.annotations.leftEyeUpper0[3][1] - predictions[0]?.annotations.leftEyeLower0[3][1]
-    };
+      // Check if we have any face detected
+      const faceDetected = predictions && predictions.length > 0
+
+      if (!faceDetected) {
+        return {
+          faceDetected: false,
+          isBlinking: false,
+          eyeOpenness: 1.0
+        }
+      }
+
+      // Get the first detected face
+      const face = predictions[0]
+
+      // FIXED: Check for keypoints instead of annotations
+      // The model might be returning keypoints in different format than expected
+      let isBlinking = false
+      let eyeOpenness = 1.0
+
+      // Check which properties are actually available
+      console.log(
+        'Face detection data structure:',
+        Object.keys(face).map((key) => `${key}: ${typeof face[key]}`)
+      )
+
+      // Try to estimate blinking from what data we have
+      if (face.keypoints && Array.isArray(face.keypoints)) {
+        // Using keypoints to calculate eye openness
+        const leftEyePoints = face.keypoints.filter(
+          (kp) =>
+            kp.name &&
+            kp.name.toLowerCase().includes('eye') &&
+            kp.name.toLowerCase().includes('left')
+        )
+
+        const rightEyePoints = face.keypoints.filter(
+          (kp) =>
+            kp.name &&
+            kp.name.toLowerCase().includes('eye') &&
+            kp.name.toLowerCase().includes('right')
+        )
+
+        if (leftEyePoints.length > 1 && rightEyePoints.length > 1) {
+          // Find the vertical distance between eye points
+          const leftEyeVertical = this.calculateEyeVerticalDistance(leftEyePoints)
+          const rightEyeVertical = this.calculateEyeVerticalDistance(rightEyePoints)
+
+          // Average the openness
+          eyeOpenness = (leftEyeVertical + rightEyeVertical) / 2
+
+          // Determine if blinking based on threshold
+          isBlinking = eyeOpenness < 0.1 // Adjust threshold as needed
+        }
+      }
+      // Fallback if we don't have proper keypoints
+      else if (face.box) {
+        // If we only have bounding box, we can't determine blinking accurately
+        // Just use face detection as a proxy for attention
+        eyeOpenness = 0.5 // Neutral value
+        isBlinking = false
+      }
+
+      return {
+        faceDetected: true,
+        isBlinking,
+        eyeOpenness,
+        keypoints: face.keypoints
+      }
+    } catch (error) {
+      console.error('Error in face detection:', error)
+      // Return a default response instead of throwing
+      return {
+        faceDetected: false,
+        isBlinking: false,
+        eyeOpenness: 1.0,
+        error: error.message
+      }
+    }
+  },
+
+  calculateEyeVerticalDistance(eyePoints) {
+    if (!eyePoints || eyePoints.length < 2) {
+      return 0.5 // Default value if not enough points
+    }
+
+    // Find top and bottom points
+    let topY = Math.min(...eyePoints.map((p) => p.y))
+    let bottomY = Math.max(...eyePoints.map((p) => p.y))
+
+    // Calculate vertical distance relative to face size
+    // (A very basic approximation)
+    return Math.abs(topY - bottomY) / 20 // Normalize to approximate range
   }
 }
 
 class FocusTracker {
   constructor() {
-    this.isTracking = false;
-    this.focusData = this.resetFocusData();
-    this.videoElement = null;
-    this.canvasElement = null;
-    this.canvasContext = null;
-    this.trackingInterval = null;
-    this.timerInterval = null;
-    this.blinkThreshold = 0.3;
-    this.modelLoaded = false;
-    this.domElements = {};
-    this.savedSessions = [];
-    this.loadSavedSessions();
+    this.isTracking = false
+    this.focusData = this.resetFocusData()
+    this.videoElement = null
+    this.canvasElement = null
+    this.canvasContext = null
+    this.trackingInterval = null
+    this.timerInterval = null
+    this.blinkThreshold = 0.3
+    this.modelLoaded = false
+    this.domElements = {}
+    this.savedSessions = []
+    this.loadSavedSessions()
   }
 
   resetFocusData() {
@@ -1574,72 +1661,72 @@ class FocusTracker {
       blinkEvents: [],
       faceDetections: [],
       focusScoreHistory: []
-    };
+    }
   }
 
   loadSavedSessions() {
     try {
-      const savedData = localStorage.getItem('focusSessions');
+      const savedData = localStorage.getItem('focusSessions')
       if (savedData) {
-        this.savedSessions = JSON.parse(savedData);
-        console.log(`Loaded ${this.savedSessions.length} focus sessions from storage`);
+        this.savedSessions = JSON.parse(savedData)
+        console.log(`Loaded ${this.savedSessions.length} focus sessions from storage`)
       }
     } catch (error) {
-      console.error('Error loading saved sessions:', error);
-      this.savedSessions = [];
+      console.error('Error loading saved sessions:', error)
+      this.savedSessions = []
     }
   }
 
   saveSessions() {
     try {
-      localStorage.setItem('focusSessions', JSON.stringify(this.savedSessions));
-      console.log(`Saved ${this.savedSessions.length} focus sessions to storage`);
+      localStorage.setItem('focusSessions', JSON.stringify(this.savedSessions))
+      console.log(`Saved ${this.savedSessions.length} focus sessions to storage`)
     } catch (error) {
-      console.error('Error saving sessions:', error);
+      console.error('Error saving sessions:', error)
     }
   }
 
   async initialize(containerElement) {
     if (!containerElement) {
-      console.error('No container element provided for focus tracker');
-      return false;
+      console.error('No container element provided for focus tracker')
+      return false
     }
 
     try {
       // Create UI
-      this.createUI(containerElement);
+      this.createUI(containerElement)
 
       // Setup canvas for visualization
-      this.setupCanvas();
+      this.setupCanvas()
 
       // Show loading state
-      this.showLoadingState(true);
+      this.showLoadingState(true)
 
       // Initialize TensorFlow
       try {
-        await tensorflowService.initialize();
-        this.modelLoaded = true;
+        await tensorflowService.initialize()
+        this.modelLoaded = true
       } catch (error) {
-        console.error('Failed to initialize TensorFlow:', error);
-        this.showLoadingState(false, error.message);
-        return false;
+        console.error('Failed to initialize TensorFlow:', error)
+        this.showLoadingState(false, error.message)
+        return false
       }
 
       // Setup event listeners
-      this.setupEventListeners();
+      this.setupEventListeners()
 
       // Hide loading state and show main content
-      this.showLoadingState(false);
+      this.showLoadingState(false)
 
       // Display previous sessions
-      this.updateSessionsList();
+      this.updateSessionsList()
 
-      return true;
+      return true
     } catch (error) {
-      console.error('Error initializing focus tracker:', error);
-      this.showError(`Failed to initialize focus tracking: ${error.message}`);
-      this.showLoadingState(false, error.message);
-      return false;
+      console.error('Error initializing focus tracker:', error)
+      this.showError(`Failed to initialize focus tracking: ${error.message}`)
+      this.showLoadingState(false, error.message)
+      return false
     }
   }
 
@@ -1733,11 +1820,11 @@ class FocusTracker {
         
         <div id="focus-error" class="focus-error" style="display: none;"></div>
       </div>
-    `;
+    `
 
     // Store references to DOM elements
-    this.videoElement = document.getElementById('focus-video');
-    this.canvasElement = document.getElementById('focus-overlay');
+    this.videoElement = document.getElementById('focus-video')
+    this.canvasElement = document.getElementById('focus-overlay')
     this.domElements = {
       modelLoading: document.getElementById('model-loading-status'),
       modelError: document.getElementById('model-error'),
@@ -1754,28 +1841,32 @@ class FocusTracker {
       sessionsList: document.getElementById('focus-sessions-list'),
       exportButton: document.getElementById('export-sessions'),
       importInput: document.getElementById('import-sessions')
-    };
+    }
   }
 
   setupCanvas() {
     if (this.canvasElement) {
-      this.canvasContext = this.canvasElement.getContext('2d');
+      this.canvasContext = this.canvasElement.getContext('2d')
     }
   }
 
   showLoadingState(isLoading, errorMessage = '') {
-    if (!this.domElements.modelLoading || !this.domElements.modelError || !this.domElements.mainContent) {
-      return;
+    if (
+      !this.domElements.modelLoading ||
+      !this.domElements.modelError ||
+      !this.domElements.mainContent
+    ) {
+      return
     }
 
     if (isLoading) {
-      this.domElements.modelLoading.style.display = 'flex';
-      this.domElements.modelError.style.display = 'none';
-      this.domElements.mainContent.style.display = 'none';
+      this.domElements.modelLoading.style.display = 'flex'
+      this.domElements.modelError.style.display = 'none'
+      this.domElements.mainContent.style.display = 'none'
     } else if (errorMessage) {
-      this.domElements.modelLoading.style.display = 'none';
-      this.domElements.modelError.style.display = 'block';
-      this.domElements.mainContent.style.display = 'none';
+      this.domElements.modelLoading.style.display = 'none'
+      this.domElements.modelError.style.display = 'block'
+      this.domElements.mainContent.style.display = 'none'
 
       this.domElements.modelError.innerHTML = `
         <p>Error initializing focus tracking: ${errorMessage}</p>
@@ -1783,64 +1874,69 @@ class FocusTracker {
           <span class="material-icons">refresh</span>
           Retry
         </button>
-      `;
+      `
 
       document.getElementById('retry-model-loading')?.addEventListener('click', () => {
-        this.showLoadingState(true);
-        tensorflowService.initialize()
+        this.showLoadingState(true)
+        tensorflowService
+          .initialize()
           .then(() => {
-            this.modelLoaded = true;
-            this.showLoadingState(false);
+            this.modelLoaded = true
+            this.showLoadingState(false)
           })
           .catch((error) => {
-            this.showLoadingState(false, error.message);
-          });
-      });
+            this.showLoadingState(false, error.message)
+          })
+      })
     } else {
-      this.domElements.modelLoading.style.display = 'none';
-      this.domElements.modelError.style.display = 'none';
-      this.domElements.mainContent.style.display = 'block';
+      this.domElements.modelLoading.style.display = 'none'
+      this.domElements.modelError.style.display = 'none'
+      this.domElements.mainContent.style.display = 'block'
     }
   }
 
   setupEventListeners() {
     // Start tracking button
-    this.domElements.startButton?.addEventListener('click', () => this.startTracking());
+    this.domElements.startButton?.addEventListener('click', () => this.startTracking())
 
     // Stop tracking button
-    this.domElements.stopButton?.addEventListener('click', () => this.stopTracking());
+    this.domElements.stopButton?.addEventListener('click', () => this.stopTracking())
 
     // Export sessions button
-    this.domElements.exportButton?.addEventListener('click', () => this.exportSessions());
+    this.domElements.exportButton?.addEventListener('click', () => this.exportSessions())
 
     // Import sessions input
-    this.domElements.importInput?.addEventListener('change', (e) => this.importSessions(e));
+    this.domElements.importInput?.addEventListener('change', (e) => this.importSessions(e))
   }
 
   updateSessionsList() {
-    const sessionsList = this.domElements.sessionsList;
-    if (!sessionsList) return;
+    const sessionsList = this.domElements.sessionsList
+    if (!sessionsList) return
 
     if (this.savedSessions.length === 0) {
-      sessionsList.innerHTML = `<div class="empty-state">No recent focus sessions found</div>`;
-      return;
+      sessionsList.innerHTML = `<div class="empty-state">No recent focus sessions found</div>`
+      return
     }
 
     // Sort sessions by date, newest first
     const sortedSessions = [...this.savedSessions].sort(
-      (a, b) => new Date(b.startTime || b.createdAt || 0) - new Date(a.startTime || a.createdAt || 0)
-    );
+      (a, b) =>
+        new Date(b.startTime || b.createdAt || 0) - new Date(a.startTime || a.createdAt || 0)
+    )
 
     // Take only the 5 most recent sessions
-    const recentSessions = sortedSessions.slice(0, 5);
+    const recentSessions = sortedSessions.slice(0, 5)
 
     sessionsList.innerHTML = recentSessions
       .map((session) => {
-        const startTime = new Date(session.startTime);
-        const endTime = session.endTime ? new Date(session.endTime) : new Date();
-        const duration = Math.floor((endTime - startTime) / 1000 / 60); // Duration in minutes
-        const formattedDate = startTime.toLocaleDateString();
-        const formattedTime = startTime.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+        const startTime = new Date(session.startTime)
+        const endTime = session.endTime ? new Date(session.endTime) : new Date()
+        const duration = Math.floor((endTime - startTime) / 1000 / 60) // Duration in minutes
+        const formattedDate = startTime.toLocaleDateString()
+        const formattedTime = startTime.toLocaleTimeString([], {
+          hour: '2-digit',
+          minute: '2-digit'
+        })
 
         return `
           <div class="session-item">
@@ -1857,40 +1953,44 @@ class FocusTracker {
               </div>
             </div>
           </div>
-        `;
+        `
       })
-      .join('');
+      .join('')
   }
 
   async startTracking() {
-    if (this.isTracking) return;
+    if (this.isTracking) return
 
     try {
       // Request camera access
-      await this.initializeCamera();
+      await this.initializeCamera()
 
       // Reset focus data
-      this.focusData = this.resetFocusData();
-      this.focusData.startTime = Date.now();
+      this.focusData = this.resetFocusData()
+      this.focusData.startTime = Date.now()
 
       // Update UI
-      this.domElements.startButton.disabled = true;
-      this.domElements.stopButton.disabled = false;
+      this.domElements.startButton.disabled = true
+      this.domElements.stopButton.disabled = false
       if (this.domElements.faceIndicator) {
-        this.domElements.faceIndicator.classList.remove('face-detected', 'no-face-detected');
+        this.domElements.faceIndicator.classList.remove('face-detected', 'no-face-detected')
       }
-      this.isTracking = true;
+      this.isTracking = true
 
-      // Start tracking loop
-      this.trackingInterval = setInterval(() => this.trackFocus(), 200);
+      // Start tracking loop - FIXED: Making sure trackFocus is defined properly
+      this.trackingInterval = setInterval(() => {
+        this.trackFocus().catch((err) => {
+          console.error('Error in tracking loop:', err)
+        })
+      }, 200)
 
       // Start session timer
-      this.timerInterval = setInterval(() => this.updateSessionTime(), 1000);
+      this.timerInterval = setInterval(() => this.updateSessionTime(), 1000)
 
-      console.log('Focus tracking started');
+      console.log('Focus tracking started')
     } catch (error) {
-      console.error('Failed to start focus tracking:', error);
-      this.showError(`Failed to start tracking: ${error.message}`);
+      console.error('Failed to start focus tracking:', error)
+      this.showError(`Failed to start tracking: ${error.message}`)
     }
   }
 
@@ -1902,65 +2002,65 @@ class FocusTracker {
           width: { ideal: 640 },
           height: { ideal: 480 }
         }
-      };
+      }
 
-      const stream = await navigator.mediaDevices.getUserMedia(constraints);
-      this.videoElement.srcObject = stream;
+      const stream = await navigator.mediaDevices.getUserMedia(constraints)
+      this.videoElement.srcObject = stream
 
       // Wait for video to be ready
       return new Promise((resolve) => {
         this.videoElement.onloadedmetadata = () => {
-          this.videoElement.play();
-          resolve(true);
-        };
-      });
+          this.videoElement.play()
+          resolve(true)
+        }
+      })
     } catch (error) {
-      console.error('Failed to initialize camera:', error);
-      throw error;
+      console.error('Failed to initialize camera:', error)
+      throw error
     }
   }
 
   stopCamera() {
     if (this.videoElement && this.videoElement.srcObject) {
-      const tracks = this.videoElement.srcObject.getTracks();
-      tracks.forEach((track) => track.stop());
-      this.videoElement.srcObject = null;
+      const tracks = this.videoElement.srcObject.getTracks()
+      tracks.forEach((track) => track.stop())
+      this.videoElement.srcObject = null
     }
   }
 
   stopTracking() {
-    if (!this.isTracking) return;
+    if (!this.isTracking) return
 
     // Stop video stream
-    this.stopCamera();
+    this.stopCamera()
 
     // Stop intervals
-    clearInterval(this.trackingInterval);
-    clearInterval(this.timerInterval);
+    clearInterval(this.trackingInterval)
+    clearInterval(this.timerInterval)
 
     // Update focus data
-    this.focusData.endTime = Date.now();
-    this.focusData.sessionDuration = (this.focusData.endTime - this.focusData.startTime) / 1000; // in seconds
+    this.focusData.endTime = Date.now()
+    this.focusData.sessionDuration = (this.focusData.endTime - this.focusData.startTime) / 1000 // in seconds
 
     // Update UI
-    this.domElements.startButton.disabled = false;
-    this.domElements.stopButton.disabled = true;
-    this.isTracking = false;
+    this.domElements.startButton.disabled = false
+    this.domElements.stopButton.disabled = true
+    this.isTracking = false
 
     // Clear canvas
     if (this.canvasContext) {
-      this.canvasContext.clearRect(0, 0, this.canvasElement.width, this.canvasElement.height);
+      this.canvasContext.clearRect(0, 0, this.canvasElement.width, this.canvasElement.height)
     }
 
     // Save session data
-    this.saveSession();
+    this.saveSession()
 
-    // Final update
-    this.updateStats();
+    // FIXED: Make sure updateStats is called as a method using 'this'
+    this.updateStats()
 
-    console.log('Focus tracking stopped');
+    console.log('Focus tracking stopped')
 
-    return this.focusData;
+    return this.focusData
   }
 
   saveSession() {
@@ -1970,99 +2070,151 @@ class FocusTracker {
         ...this.focusData,
         id: Date.now(),
         createdAt: new Date().toISOString()
-      };
+      }
 
-      this.savedSessions.push(sessionToSave);
+      this.savedSessions.push(sessionToSave)
 
       // Keep only the 50 most recent sessions
       if (this.savedSessions.length > 50) {
         this.savedSessions = this.savedSessions
           .sort((a, b) => new Date(b.createdAt) - new Date(a.createdAt))
-          .slice(0, 50);
+          .slice(0, 50)
       }
 
       // Save to localStorage
-      this.saveSessions();
+      this.saveSessions()
     }
 
     // Update session list
-    this.updateSessionsList();
+    this.updateSessionsList()
   }
 
   async trackFocus() {
-    if (!this.isTracking || !this.modelLoaded) return;
+    if (!this.isTracking || !this.modelLoaded) return
 
     try {
       // Detect faces
       if (!this.videoElement || this.videoElement.readyState < 2) {
-        return;
+        return
       }
 
-      const faces = await tensorflowService.detectBlinks(this.videoElement);
-      const faceDetected = faces.faceDetected;
+      // FIXED: Using the updated detection function that properly handles errors
+      const blinkData = await tensorflowService.detectBlinks(this.videoElement)
+      const faceDetected = blinkData.faceDetected
 
       // Update face detection indicator
-      this.updateFaceIndicator(faceDetected);
+      this.updateFaceIndicator(faceDetected)
 
       if (faceDetected) {
         // Draw face on canvas if needed
-        if (faces.keypoints) {
-          this.drawFaceLandmarks(faces);
+        if (blinkData.keypoints) {
+          this.drawFaceLandmarks(blinkData)
         }
 
         // Record face detection
         this.focusData.faceDetections.push({
           timestamp: Date.now()
-        });
+        })
 
         // Record blink event if blinking
-        if (faces.isBlinking) {
+        if (blinkData.isBlinking) {
           this.focusData.blinkEvents.push({
             timestamp: Date.now(),
-            eyeOpenness: faces.eyeOpenness
-          });
+            eyeOpenness: blinkData.eyeOpenness
+          })
         }
 
         // Calculate blink rate (blinks per minute)
-        const sessionDurationMinutes = (Date.now() - this.focusData.startTime) / 60000;
+        const sessionDurationMinutes = (Date.now() - this.focusData.startTime) / 60000
         this.focusData.blinkRate =
-          this.focusData.blinkEvents.length / Math.max(sessionDurationMinutes, 0.1);
+          this.focusData.blinkEvents.length / Math.max(sessionDurationMinutes, 0.1)
 
         // Update attention score based on blink rate
-        this.updateAttentionScore(faces.eyeOpenness, faces.isBlinking);
+        this.updateAttentionScore(blinkData.eyeOpenness, blinkData.isBlinking)
       } else {
         // No face detected - record distraction
-        this.recordDistraction();
+        this.recordDistraction()
 
         // Clear canvas when no face is detected
         if (this.canvasContext) {
-          this.canvasContext.clearRect(0, 0, this.canvasElement.width, this.canvasElement.height);
+          this.canvasContext.clearRect(0, 0, this.canvasElement.width, this.canvasElement.height)
         }
       }
 
-      // Update stats display
-      this.updateStats();
+      // FIXED: Update stats during tracking
+      this.updateStats()
     } catch (error) {
-      console.error('Error during focus tracking:', error);
+      console.error('Error during focus tracking:', error)
+      // Don't throw here, just log the error to avoid breaking the tracking loop
+    }
+  }
+
+  // FIXED: Added missing functions
+  updateFaceIndicator(faceDetected) {
+    if (!this.domElements.faceIndicator) return
+
+    this.domElements.faceIndicator.classList.remove('face-detected', 'no-face-detected')
+
+    if (faceDetected) {
+      this.domElements.faceIndicator.classList.add('face-detected')
+    } else {
+      this.domElements.faceIndicator.classList.add('no-face-detected')
+    }
+  }
+
+  drawFaceLandmarks(faceData) {
+    if (!this.canvasContext || !this.canvasElement || !faceData.keypoints) return
+
+    // Clear previous drawing
+    this.canvasContext.clearRect(0, 0, this.canvasElement.width, this.canvasElement.height)
+
+    // Draw face landmarks
+    this.canvasContext.fillStyle = 'rgba(0, 255, 0, 0.5)'
+
+    faceData.keypoints.forEach((point) => {
+      if (point.x && point.y) {
+        // Scale points to canvas size
+        const x = (point.x * this.canvasElement.width) / this.videoElement.videoWidth
+        const y = (point.y * this.canvasElement.height) / this.videoElement.videoHeight
+
+        this.canvasContext.beginPath()
+        this.canvasContext.arc(x, y, 2, 0, 2 * Math.PI)
+        this.canvasContext.fill()
+      }
+    })
+  }
+
+  recordDistraction() {
+    // Check if enough time has passed since the last distraction
+    const now = Date.now()
+    const lastDistractionTime = this.focusData.lastDistractionTime || 0
+
+    // Only count as a new distraction if more than 3 seconds passed
+    if (now - lastDistractionTime > 3000) {
+      this.focusData.distractions++
+      this.focusData.lastDistractionTime = now
+
+      // Decrease attention score
+      this.focusData.attentionScore = Math.max(this.focusData.attentionScore - 5, 0)
     }
   }
 
   updateAttentionScore(eyeOpenness, isBlinking) {
     // Current attention score
-    let score = this.focusData.attentionScore;
+    let score = this.focusData.attentionScore
 
     // Factors affecting attention score
     if (!isBlinking) {
       // Normal eye state - gradually increase score if in healthy blink rate range
       if (this.focusData.blinkRate >= 10 && this.focusData.blinkRate <= 25) {
         // Healthy blink rate (10-25 blinks per minute)
-        score = Math.min(score + 0.2, 100);
+        score = Math.min(score + 0.2, 100)
       } else if (this.focusData.blinkRate < 10) {
         // Too few blinks - potential staring, slight decrease
-        score = Math.max(score - 0.1, 40);
+        score = Math.max(score - 0.1, 40)
       } else if (this.focusData.blinkRate > 25) {
         // Too many blinks - potential fatigue
-        score = Math.max(score - 0.2, 20);
+        score = Math.max(score - 0.2, 20)
       }
     }
 
@@ -2070,412 +2222,331 @@ class FocusTracker {
     this.focusData.focusScoreHistory.push({
       timestamp: Date.now(),
       score: score
-    });
+    })
 
     // Update score
-    this.focusData.attentionScore = score;
-    
+    this.focusData.attentionScore = score
+
     // Update the focus score ring visualization
-    this.updateFocusRing(score);
+    this.updateFocusRing(score)
   }
-  
+
   updateFocusRing(score) {
-    if (!this.domElements.focusScoreRing) return;
-    
+    if (!this.domElements.focusScoreRing) return
+
     // Update the conic gradient to visualize the score
-    const percentage = Math.round(score);
-    this.domElements.focusScoreRing.style.background = 
-      `conic-gradient(var(--primary-color) 0% ${percentage}%, transparent ${percentage}% 100%)`;
-    
+    const percentage = Math.round(score)
+    this.domElements.focusScoreRing.style.background = `conic-gradient(var(--primary-color) 0% ${percentage}%, transparent ${percentage}% 100%)`
+
     // Change color based on score ranges
     if (percentage >= 80) {
-      this.domElements.focusScoreRing.style.setProperty('--primary-color', 'var(--positive-color, #4cd964)');
+      this.domElements.focusScoreRing.style.setProperty(
+        '--primary-color',
+        'var(--positive-color, #4cd964)'
+      )
     } else if (percentage >= 50) {
-      this.domElements.focusScoreRing.style.setProperty('--primary-color', 'var(--primary-color, #3366ff)');
+      this.domElements.focusScoreRing.style.setProperty(
+        '--primary-color',
+        'var(--primary-color, #3366ff)'
+      )
     } else if (percentage >= 30) {
-      this.domElements.focusScoreRing.style.setProperty('--primary-color', 'var(--warning-color, #ffcc00)');
+      this.domElements.focusScoreRing.style.setProperty(
+        '--primary-color',
+        'var(--warning-color, #ffcc00)'
+      )
     } else {
-      this.domElements.focusScoreRing.style.setProperty('--primary-color', 'var(--negative-color, #ff3b30)');
+      this.domElements.focusScoreRing.style.setProperty(
+        '--primary-color',
+        'var(--negative-color, #ff3b30)'
+      )
     }
   }
 
   updateSessionTime() {
-    if (!this.domElements.sessionTime) return;
-    
-    const sessionDurationSeconds = Math.floor((Date.now() - this.focusData.startTime) / 1000);
-    const minutes = Math.floor(sessionDurationSeconds / 60).toString().padStart(2, '0');
-    const seconds = (sessionDurationSeconds % 60).toString().padStart(2, '0');
-    this.domElements.sessionTime.textContent = `${minutes}:${seconds}`;
-    
+    if (!this.domElements.sessionTime) return
+
+    const sessionDurationSeconds = Math.floor((Date.now() - this.focusData.startTime) / 1000)
+    const minutes = Math.floor(sessionDurationSeconds / 60)
+      .toString()
+      .padStart(2, '0')
+    const seconds = (sessionDurationSeconds % 60).toString().padStart(2, '0')
+    this.domElements.sessionTime.textContent = `${minutes}:${seconds}`
+
     // Update the sessionDuration in the focus data
-    this.focusData.sessionDuration = sessionDurationSeconds;
-    
+    this.focusData.sessionDuration = sessionDurationSeconds
+
     // If session is longer than 10 minutes, offer to take a break every 10 minutes
     if (sessionDurationSeconds > 0 && sessionDurationSeconds % 600 === 0) {
-      this.showBreakReminder();
+      this.showBreakReminder()
     }
   }
-  
+
   showBreakReminder() {
     this.showNotification(
-      'You\'ve been studying for 10 minutes. Consider taking a short break!',
+      "You've been studying for 10 minutes. Consider taking a short break!",
       'info'
-    );
+    )
   }
-  
-  showError(message) {
-    if (!this.domElements.errorContainer) return;
 
-    this.domElements.errorContainer.textContent = message;
-    this.domElements.errorContainer.style.display = 'block';
-    
+  // FIXED: Added proper implementation of updateStats
+  updateStats() {
+    if (!this.domElements) return
+
+    // Update focus score display
+    if (this.domElements.focusScore) {
+      this.domElements.focusScore.textContent = Math.round(this.focusData.attentionScore)
+    }
+
+    // Update blink rate display
+    if (this.domElements.blinkRate) {
+      this.domElements.blinkRate.textContent = Math.round(this.focusData.blinkRate)
+    }
+
+    // Update distraction count display
+    if (this.domElements.distractionCount) {
+      this.domElements.distractionCount.textContent = this.focusData.distractions
+    }
+  }
+
+  showError(message) {
+    if (!this.domElements.errorContainer) return
+
+    this.domElements.errorContainer.textContent = message
+    this.domElements.errorContainer.style.display = 'block'
+
     // Hide after 5 seconds
     setTimeout(() => {
-      this.domElements.errorContainer.style.display = 'none';
-    }, 5000);
-    
+      this.domElements.errorContainer.style.display = 'none'
+    }, 5000)
+
     // Also show as notification
-    this.showNotification(message, 'error');
+    this.showNotification(message, 'error')
   }
-  
-  // Generate summary report of the session
+
+  // FIXED: Added notification system
+  showNotification(message, type = 'info') {
+    // Create notification element if it doesn't exist
+    let notificationElement = document.querySelector('.focus-notification')
+
+    if (!notificationElement) {
+      notificationElement = document.createElement('div')
+      notificationElement.className = 'focus-notification'
+      document.body.appendChild(notificationElement)
+    }
+
+    // Set notification content and type
+    notificationElement.textContent = message
+    notificationElement.className = `focus-notification ${type}`
+
+    // Show notification
+    notificationElement.classList.add('show')
+
+    // Hide after a delay
+    setTimeout(() => {
+      notificationElement.classList.remove('show')
+
+      // Remove from DOM after animation completes
+      setTimeout(() => {
+        if (document.body.contains(notificationElement)) {
+          document.body.removeChild(notificationElement)
+        }
+      }, 300)
+    }, 5000)
+  }
+
+  // Export sessions methods
+  exportSessions() {
+    if (this.savedSessions.length === 0) {
+      this.showNotification('No sessions to export', 'warning')
+      return
+    }
+
+    try {
+      // Create a download link for the sessions data
+      const sessionsJSON = JSON.stringify(this.savedSessions, null, 2)
+      const blob = new Blob([sessionsJSON], { type: 'application/json' })
+      const url = URL.createObjectURL(blob)
+
+      const downloadLink = document.createElement('a')
+      downloadLink.href = url
+      downloadLink.download = `focus-sessions-${new Date().toISOString().slice(0, 10)}.json`
+      document.body.appendChild(downloadLink)
+      downloadLink.click()
+
+      // Clean up
+      setTimeout(() => {
+        document.body.removeChild(downloadLink)
+        URL.revokeObjectURL(url)
+      }, 100)
+
+      this.showNotification('Sessions exported successfully', 'success')
+    } catch (error) {
+      console.error('Error exporting sessions:', error)
+      this.showError(`Failed to export sessions: ${error.message}`)
+    }
+  }
+
+  // Import sessions from a file
+  importSessions(event) {
+    const fileInput = event.target
+    if (!fileInput.files || fileInput.files.length === 0) {
+      return
+    }
+
+    const file = fileInput.files[0]
+    const reader = new FileReader()
+
+    reader.onload = (e) => {
+      try {
+        const importedSessions = JSON.parse(e.target.result)
+
+        if (!Array.isArray(importedSessions)) {
+          throw new Error('Invalid file format: not an array of sessions')
+        }
+
+        // Validate basic session structure
+        const validSessions = importedSessions.filter(
+          (session) =>
+            session &&
+            typeof session === 'object' &&
+            session.startTime &&
+            typeof session.attentionScore === 'number'
+        )
+
+        if (validSessions.length === 0) {
+          throw new Error('No valid sessions found in the file')
+        }
+
+        // Merge with existing sessions
+        const newSessions = [...this.savedSessions]
+
+        // Add new sessions, avoiding duplicates by ID
+        const existingIds = new Set(newSessions.map((s) => s.id))
+
+        validSessions.forEach((session) => {
+          if (!session.id) {
+            session.id = Date.now() + Math.floor(Math.random() * 1000)
+          }
+
+          if (!existingIds.has(session.id)) {
+            newSessions.push(session)
+            existingIds.add(session.id)
+          }
+        })
+
+        // Sort by date and limit to 50 sessions
+        this.savedSessions = newSessions
+          .sort((a, b) => new Date(b.startTime) - new Date(a.startTime))
+          .slice(0, 50)
+
+        // Save to localStorage
+        this.saveSessions()
+
+        // Update UI
+        this.updateSessionsList()
+
+        this.showNotification(`Imported ${validSessions.length} sessions successfully`, 'success')
+
+        // Reset the file input
+        fileInput.value = ''
+      } catch (error) {
+        console.error('Error importing sessions:', error)
+        this.showError(`Failed to import sessions: ${error.message}`)
+
+        // Reset the file input
+        fileInput.value = ''
+      }
+    }
+
+    reader.onerror = () => {
+      this.showError('Error reading the file')
+      fileInput.value = ''
+    }
+
+    reader.readAsText(file)
+  }
+
+  // Generate summary for a completed session
   generateSessionSummary() {
-    if (!this.focusData.endTime) return null;
-    
-    const sessionDurationMinutes = this.focusData.sessionDuration / 60;
-    const averageAttentionScore = this.calculateAverageAttentionScore();
-    const totalBlinks = this.focusData.blinkEvents.length;
-    const blinkRate = totalBlinks / Math.max(sessionDurationMinutes, 0.1);
-    const distractions = this.focusData.distractions;
-    
-    // Calculate focus quality rating
-    let focusQuality = 'Poor';
-    if (averageAttentionScore >= 85) focusQuality = 'Excellent';
-    else if (averageAttentionScore >= 70) focusQuality = 'Good';
-    else if (averageAttentionScore >= 50) focusQuality = 'Fair';
-    
-    // Calculate statistics
-    const timeOnTask = sessionDurationMinutes - (distractions * 0.5); // Estimate time lost to distractions
-    const percentTimeOnTask = Math.round((timeOnTask / sessionDurationMinutes) * 100);
-    
-    // Create summary object
+    if (!this.focusData.endTime) {
+      return null
+    }
+
+    const sessionDurationMinutes = this.focusData.sessionDuration / 60
+    const avgAttentionScore = this.calculateAverageAttentionScore()
+    const totalBlinks = this.focusData.blinkEvents.length
+    const blinkRate = sessionDurationMinutes > 0 ? totalBlinks / sessionDurationMinutes : 0
+
+    let focusQuality = 'Poor'
+    if (avgAttentionScore >= 85) focusQuality = 'Excellent'
+    else if (avgAttentionScore >= 70) focusQuality = 'Good'
+    else if (avgAttentionScore >= 50) focusQuality = 'Fair'
+
+    // Generate personalized suggestions
+    const suggestions = this.generateSuggestions(
+      avgAttentionScore,
+      blinkRate,
+      this.focusData.distractions
+    )
+
     return {
       date: new Date().toLocaleDateString(),
       startTime: new Date(this.focusData.startTime).toLocaleTimeString(),
       endTime: new Date(this.focusData.endTime).toLocaleTimeString(),
       duration: `${Math.floor(sessionDurationMinutes)} minutes`,
-      attentionScore: Math.round(averageAttentionScore),
+      attentionScore: Math.round(avgAttentionScore),
       blinkRate: Math.round(blinkRate),
-      distractions: distractions,
+      distractions: this.focusData.distractions,
       focusQuality: focusQuality,
-      timeOnTask: `${Math.round(timeOnTask)} minutes (${percentTimeOnTask}%)`,
-      suggestions: this.generateImprovedSuggestions()
-    };
+      suggestions: suggestions
+    }
   }
-  
+
   calculateAverageAttentionScore() {
     if (this.focusData.focusScoreHistory.length === 0) {
-      return this.focusData.attentionScore;
+      return this.focusData.attentionScore
     }
-    
+
     const sum = this.focusData.focusScoreHistory.reduce((total, record) => {
-      return total + record.score;
-    }, 0);
-    
-    return sum / this.focusData.focusScoreHistory.length;
+      return total + record.score
+    }, 0)
+
+    return sum / this.focusData.focusScoreHistory.length
   }
-  
-  generateImprovedSuggestions() {
-    const suggestions = [];
-    const averageScore = this.calculateAverageAttentionScore();
-    const blinkRate = this.focusData.blinkRate;
-    const distractions = this.focusData.distractions;
-    
-    // Generate personalized suggestions based on metrics
-    if (averageScore < 50) {
-      suggestions.push("Your focus seems low. Try implementing the Pomodoro technique: 25 minutes of focused work followed by a 5-minute break.");
+
+  generateSuggestions(attentionScore, blinkRate, distractions) {
+    const suggestions = []
+
+    if (attentionScore < 50) {
+      suggestions.push(
+        'Your focus was relatively low. Try the Pomodoro technique: 25 minutes of focused work followed by a 5-minute break.'
+      )
     }
-    
+
     if (blinkRate > 25) {
-      suggestions.push("Your high blink rate may indicate eye fatigue. Consider the 20-20-20 rule: every 20 minutes, look at something 20 feet away for 20 seconds.");
-    } else if (blinkRate < 10) {
-      suggestions.push("Your low blink rate may cause eye strain. Remember to blink regularly when working on screens.");
+      suggestions.push(
+        'Your high blink rate may indicate eye fatigue. Consider the 20-20-20 rule: every 20 minutes, look at something 20 feet away for 20 seconds.'
+      )
+    } else if (blinkRate < 10 && blinkRate > 0) {
+      suggestions.push(
+        'Your low blink rate may cause eye strain. Remember to blink regularly when working on screens.'
+      )
     }
-    
+
     if (distractions > 5) {
-      suggestions.push("You had many distractions. Consider using a dedicated study space with fewer interruptions.");
+      suggestions.push(
+        'You had many distractions. Consider using a dedicated study space with fewer interruptions.'
+      )
     }
-    
+
     // Add a general suggestion if none were generated
     if (suggestions.length === 0) {
-      suggestions.push("Great focus session! For even better results, try drinking water regularly and taking short breaks every 25-30 minutes.");
+      suggestions.push(
+        'Great focus session! For even better results, try drinking water regularly and taking short breaks every 25-30 minutes.'
+      )
     }
-    
-    return suggestions;
-  }
-  
-  // Display session summary as a modal
-  displaySessionSummary() {
-    const summary = this.generateSessionSummary();
-    if (!summary) return;
-    
-    // Create modal element
-    const modalElement = document.createElement('div');
-    modalElement.className = 'focus-summary-modal';
-    
-    modalElement.innerHTML = `
-      <div class="focus-summary-content">
-        <button class="close-button">×</button>
-        <h2>Focus Session Summary</h2>
-        
-        <div class="summary-header">
-          <div class="score-display">
-            <div class="big-score">${summary.attentionScore}</div>
-            <div class="score-label">Focus Score</div>
-          </div>
-          <div class="session-info">
-            <div class="session-detail"><span class="material-icons">calendar_today</span> ${summary.date}</div>
-            <div class="session-detail"><span class="material-icons">schedule</span> ${summary.startTime} - ${summary.endTime}</div>
-            <div class="session-detail"><span class="material-icons">timelapse</span> Duration: ${summary.duration}</div>
-          </div>
-        </div>
-        
-        <div class="summary-stats">
-          <div class="stat-item">
-            <div class="stat-label">Focus Quality</div>
-            <div class="stat-value">${summary.focusQuality}</div>
-          </div>
-          <div class="stat-item">
-            <div class="stat-label">Blink Rate</div>
-            <div class="stat-value">${summary.blinkRate}/min</div>
-          </div>
-          <div class="stat-item">
-            <div class="stat-label">Distractions</div>
-            <div class="stat-value">${summary.distractions}</div>
-          </div>
-          <div class="stat-item">
-            <div class="stat-label">Time on Task</div>
-            <div class="stat-value">${summary.timeOnTask}</div>
-          </div>
-        </div>
-        
-        <div class="summary-suggestions">
-          <h3>Suggestions for Improvement</h3>
-          <ul>
-            ${summary.suggestions.map(suggestion => `<li>${suggestion}</li>`).join('')}
-          </ul>
-        </div>
-        
-        <div class="summary-actions">
-          <button id="save-summary" class="primary-button">
-            <span class="material-icons">save</span> Save Report
-          </button>
-          <button id="close-summary" class="secondary-button">
-            <span class="material-icons">close</span> Close
-          </button>
-        </div>
-      </div>
-    `;
-    
-    // Add to document
-    document.body.appendChild(modalElement);
-    
-    // Add event listeners for buttons
-    modalElement.querySelector('.close-button').addEventListener('click', () => {
-      this.closeModal(modalElement);
-    });
-    
-    modalElement.querySelector('#close-summary').addEventListener('click', () => {
-      this.closeModal(modalElement);
-    });
-    
-    modalElement.querySelector('#save-summary').addEventListener('click', () => {
-      this.saveSessionSummary(summary);
-      this.closeModal(modalElement);
-    });
-    
-    // Show modal with animation
-    setTimeout(() => {
-      modalElement.classList.add('show');
-    }, 10);
-    
-    // Close when clicking outside
-    modalElement.addEventListener('click', (e) => {
-      if (e.target === modalElement) {
-        this.closeModal(modalElement);
-      }
-    });
-  }
-  
-  closeModal(modalElement) {
-    modalElement.classList.remove('show');
-    setTimeout(() => {
-      if (document.body.contains(modalElement)) {
-        document.body.removeChild(modalElement);
-      }
-    }, 300);
-  }
-  
-  saveSessionSummary(summary) {
-    const summaryText = `
-# Focus Session Summary - ${summary.date}
 
-## Session Details
-- Date: ${summary.date}
-- Time: ${summary.startTime} - ${summary.endTime}
-- Duration: ${summary.duration}
-
-## Performance Metrics
-- Focus Score: ${summary.attentionScore}
-- Focus Quality: ${summary.focusQuality}
-- Blink Rate: ${summary.blinkRate}/min
-- Distractions: ${summary.distractions}
-- Time on Task: ${summary.timeOnTask}
-
-## Suggestions for Improvement
-${summary.suggestions.map(suggestion => `- ${suggestion}`).join('\n')}
-`;
-
-    // Create download link
-    const element = document.createElement('a');
-    const file = new Blob([summaryText], {type: 'text/plain'});
-    element.href = URL.createObjectURL(file);
-    element.download = `focus-summary-${new Date().toISOString().slice(0, 10)}.md`;
-    document.body.appendChild(element);
-    element.click();
-    document.body.removeChild(element);
-    
-    this.showNotification('Focus summary saved successfully!', 'success');
-  }
-  
-  // Helper for visualizing focus data as a chart (stub - would be implemented with a charting library)
-  visualizeFocusData() {
-    if (!this.focusData.focusScoreHistory || this.focusData.focusScoreHistory.length === 0) {
-      return false;
-    }
-    
-    // This would be implemented with a charting library like D3.js or Chart.js
-    console.log('Visualizing focus data:', this.focusData.focusScoreHistory);
-    return true;
-  }
-  
-  // Settings and configuration
-  updateSettings(settings) {
-    // Apply new settings
-    if (settings.blinkThreshold !== undefined) {
-      this.blinkThreshold = settings.blinkThreshold;
-    }
-    
-    // Save settings to localStorage
-    try {
-      localStorage.setItem('focusTrackerSettings', JSON.stringify({
-        blinkThreshold: this.blinkThreshold
-      }));
-    } catch (error) {
-      console.error('Failed to save settings:', error);
-    }
-    
-    return true;
-  }
-  
-  loadSettings() {
-    try {
-      const savedSettings = localStorage.getItem('focusTrackerSettings');
-      if (savedSettings) {
-        const settings = JSON.parse(savedSettings);
-        if (settings.blinkThreshold !== undefined) {
-          this.blinkThreshold = settings.blinkThreshold;
-        }
-      }
-    } catch (error) {
-      console.error('Failed to load settings:', error);
-    }
-  }
-  
-  // Calibration function - would adjust detection thresholds based on user's blinking patterns
-  async calibrate() {
-    if (!this.modelLoaded || this.isTracking) {
-      this.showError('Cannot calibrate while tracking or if model is not loaded');
-      return false;
-    }
-    
-    // Show calibration UI
-    this.showNotification('Starting calibration - please blink normally a few times...', 'info');
-    
-    try {
-      // Start camera temporarily
-      await this.initializeCamera();
-      
-      // Collect blink samples
-      const blinkSamples = [];
-      const calibrationTime = 10000; // 10 seconds
-      const startTime = Date.now();
-      
-      // Create a promise that resolves after collecting samples
-      await new Promise((resolve, reject) => {
-        const calibrationInterval = setInterval(async () => {
-          try {
-            // Check if calibration time is over
-            if (Date.now() - startTime > calibrationTime) {
-              clearInterval(calibrationInterval);
-              resolve();
-              return;
-            }
-            
-            // Detect blinks
-            const blinkData = await tensorflowService.detectBlinks(this.videoElement);
-            if (blinkData.faceDetected) {
-              blinkSamples.push({
-                eyeOpenness: blinkData.eyeOpenness,
-                isBlinking: blinkData.isBlinking
-              });
-            }
-          } catch (error) {
-            clearInterval(calibrationInterval);
-            reject(error);
-          }
-        }, 100);
-      });
-      
-      // Process collected samples to find optimal threshold
-      if (blinkSamples.length > 10) {
-        const blinkingValues = blinkSamples
-          .filter(sample => sample.isBlinking)
-          .map(sample => sample.eyeOpenness);
-          
-        const nonBlinkingValues = blinkSamples
-          .filter(sample => !sample.isBlinking)
-          .map(sample => sample.eyeOpenness);
-        
-        if (blinkingValues.length > 0 && nonBlinkingValues.length > 0) {
-          // Calculate average values
-          const avgBlinking = blinkingValues.reduce((sum, val) => sum + val, 0) / blinkingValues.length;
-          const avgNonBlinking = nonBlinkingValues.reduce((sum, val) => sum + val, 0) / nonBlinkingValues.length;
-          
-          // Set threshold between the two averages
-          this.blinkThreshold = (avgBlinking + avgNonBlinking) / 2;
-          
-          // Save new threshold
-          this.updateSettings({ blinkThreshold: this.blinkThreshold });
-          
-          this.showNotification('Calibration complete!', 'success');
-        } else {
-          this.showNotification('Not enough blink samples detected. Using default settings.', 'warning');
-        }
-      } else {
-        this.showNotification('Not enough samples collected. Using default settings.', 'warning');
-      }
-      
-      // Stop camera after calibration
-      this.stopCamera();
-      
-      return true;
-    } catch (error) {
-      console.error('Calibration error:', error);
-      this.showError(`Calibration failed: ${error.message}`);
-      this.stopCamera();
-      return false;
-    }
+    return suggestions
   }
 }
 
@@ -2567,7 +2638,6 @@ function updateRecentSessionsList(sessions) {
     .join('')
 }
 
-// Main function to initialize focus tracking
 async function initializeFocusTracking() {
   const focusContainer = document.getElementById('focus-tracking-container')
   if (!focusContainer) {
@@ -2577,10 +2647,234 @@ async function initializeFocusTracking() {
 
   // Create focus tracker if not exists
   if (!window.focusTracker) {
+    // Define the tensorflowService object with fixed implementation
+    window.tensorflowService = {
+      model: null,
+      initialized: false,
+
+      async initialize() {
+        console.log('Initializing TensorFlow.js...')
+
+        try {
+          // Explicitly import both necessary packages
+          const tf = await import('@tensorflow/tfjs')
+          console.log('TensorFlow core loaded successfully')
+
+          // Import face detection
+          const faceDetection = await import('@tensorflow-models/face-detection')
+          console.log('Face detection module loaded successfully')
+
+          // Choose appropriate backend
+          if (tf.engine().backendNames().includes('webgl')) {
+            await tf.setBackend('webgl')
+            console.log('Using WebGL backend')
+          } else {
+            await tf.setBackend('cpu')
+            console.log('Using CPU backend (WebGL not available)')
+          }
+
+          // Create model config
+          const modelConfig = {
+            runtime: 'tfjs', // Required parameter
+            modelType: 'short',
+            maxFaces: 1
+          }
+
+          // Use MediaPipeFaceDetector if available
+          const modelName = faceDetection.SupportedModels.MediaPipeFaceDetector
+
+          // Create the detector
+          const faceDetector = await faceDetection.createDetector(modelName, modelConfig)
+
+          // Store the model
+          this.model = faceDetector
+          this.initialized = true
+
+          console.log('Face detector created successfully')
+          return true
+        } catch (error) {
+          console.error('Failed to initialize TensorFlow:', error)
+          throw error
+        }
+      },
+
+      async detectBlinks(videoElement) {
+        if (!this.initialized || !this.model) {
+          throw new Error('TensorFlow model is not initialized')
+        }
+
+        try {
+          const predictions = await this.model.estimateFaces(videoElement, false)
+
+          // Check if we have any face detected
+          const faceDetected = predictions && predictions.length > 0
+
+          if (!faceDetected) {
+            return {
+              faceDetected: false,
+              isBlinking: false,
+              eyeOpenness: 1.0
+            }
+          }
+
+          // Get the first detected face
+          const face = predictions[0]
+
+          // Use keypoints instead of annotations
+          let isBlinking = false
+          let eyeOpenness = 1.0
+
+          // Try to estimate blinking from keypoints if available
+          if (face.keypoints && Array.isArray(face.keypoints)) {
+            const leftEyePoints = face.keypoints.filter(
+              (kp) =>
+                kp.name &&
+                kp.name.toLowerCase().includes('eye') &&
+                kp.name.toLowerCase().includes('left')
+            )
+
+            const rightEyePoints = face.keypoints.filter(
+              (kp) =>
+                kp.name &&
+                kp.name.toLowerCase().includes('eye') &&
+                kp.name.toLowerCase().includes('right')
+            )
+
+            if (leftEyePoints.length > 1 && rightEyePoints.length > 1) {
+              // Calculate vertical distance between eye points
+              const calculateEyeVerticalDistance = (points) => {
+                let topY = Math.min(...points.map((p) => p.y))
+                let bottomY = Math.max(...points.map((p) => p.y))
+                return Math.abs(topY - bottomY) / 20 // Normalize
+              }
+
+              const leftEyeVertical = calculateEyeVerticalDistance(leftEyePoints)
+              const rightEyeVertical = calculateEyeVerticalDistance(rightEyePoints)
+
+              // Average the openness
+              eyeOpenness = (leftEyeVertical + rightEyeVertical) / 2
+
+              // Determine if blinking based on threshold
+              isBlinking = eyeOpenness < 0.1 // Adjust threshold as needed
+            }
+          }
+          // Fallback if we don't have proper keypoints
+          else if (face.box) {
+            // If we only have bounding box, we can't determine blinking accurately
+            eyeOpenness = 0.5 // Neutral value
+            isBlinking = false
+          }
+
+          return {
+            faceDetected: true,
+            isBlinking,
+            eyeOpenness,
+            keypoints: face.keypoints
+          }
+        } catch (error) {
+          console.error('Error in face detection:', error)
+          // Return a default response instead of throwing
+          return {
+            faceDetected: false,
+            isBlinking: false,
+            eyeOpenness: 1.0,
+            error: error.message
+          }
+        }
+      }
+    }
+
+    // Create the FocusTracker instance
     window.focusTracker = new FocusTracker()
     await window.focusTracker.initialize(focusContainer)
   }
 }
+
+// Define a simple cameraService if it doesn't exist
+if (!window.cameraService) {
+  window.cameraService = {
+    stream: null,
+    videoElement: null,
+
+    async initialize(videoElement) {
+      this.videoElement = videoElement
+
+      try {
+        // Request camera permission and access
+        const constraints = {
+          video: {
+            facingMode: 'user',
+            width: { ideal: 640 },
+            height: { ideal: 480 }
+          }
+        }
+
+        this.stream = await navigator.mediaDevices.getUserMedia(constraints)
+
+        // Connect stream to video element
+        this.videoElement.srcObject = this.stream
+
+        // Wait for video to be ready
+        return new Promise((resolve) => {
+          this.videoElement.onloadedmetadata = () => {
+            this.videoElement.play()
+            resolve(true)
+          }
+        })
+      } catch (error) {
+        console.error('Failed to initialize camera:', error)
+        throw error
+      }
+    },
+
+    stop() {
+      if (this.stream) {
+        this.stream.getTracks().forEach((track) => track.stop())
+        this.stream = null
+      }
+
+      if (this.videoElement) {
+        this.videoElement.srcObject = null
+      }
+    }
+  }
+}
+
+// Initialize focus tracking when the focus section is shown
+document.querySelector('.nav-btn[data-section="focus"]')?.addEventListener('click', () => {
+  initializeFocusTracking().catch((error) => {
+    console.error('Failed to initialize focus tracking:', error)
+    alert(`Error initializing focus tracking: ${error.message}`)
+  })
+})
+
+// Also initialize on page load if we're already on the focus section
+document.addEventListener('DOMContentLoaded', () => {
+  const focusSection = document.getElementById('focus-section')
+  if (focusSection && focusSection.classList.contains('active')) {
+    initializeFocusTracking().catch((error) => {
+      console.error('Failed to initialize focus tracking on page load:', error)
+    })
+  }
+})
+
+// For debugging - print some useful information
+console.log('Debug Info:')
+console.log('- TensorFlow.js available:', typeof window.tf !== 'undefined')
+console.log('- Face detection available:', typeof window.faceDetection !== 'undefined')
+console.log(
+  '- Camera API available:',
+  !!navigator.mediaDevices && !!navigator.mediaDevices.getUserMedia
+)
+
+// Button to manually retry initialization if needed
+document.getElementById('retry-focus-init')?.addEventListener('click', () => {
+  window.focusTracker = null // Reset for fresh initialization
+  initializeFocusTracking().catch((error) => {
+    console.error('Failed to initialize focus tracking on retry:', error)
+    alert(`Error initializing focus tracking: ${error.message}`)
+  })
+})
 
 // Load focus sessions from local storage and update the dashboard
 function loadAndUpdateFocusSessions() {
@@ -2599,13 +2893,6 @@ function loadAndUpdateFocusSessions() {
   }
   return []
 }
-
-// Export focus sessions to a JSON file
-
-// Import focus sessions from a JSON file
-
-// Initialize focus tracker instance
-let focusTracker = null
 
 // Update recent sessions list in dashboard
 
