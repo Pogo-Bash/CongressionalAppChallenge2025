@@ -393,6 +393,7 @@ function updateUIForSignedInUser(user) {
 }
 
 // Function to extract and store token
+// In renderer.js, improve the extractAndStoreToken function:
 function extractAndStoreToken(result) {
   try {
     console.log('Extracting token from auth result')
@@ -410,7 +411,6 @@ function extractAndStoreToken(result) {
       return false
     }
 
-    console.log('Got credential type:', typeof credential)
     const token = credential.accessToken
 
     if (!token) {
@@ -422,11 +422,9 @@ function extractAndStoreToken(result) {
 
     // Store the token
     localStorage.setItem('googleClassroomToken', token)
-    console.log('Token stored in localStorage')
 
-    // Also log if it can be retrieved
-    const storedToken = localStorage.getItem('googleClassroomToken')
-    console.log('Token retrieved from storage, length:', storedToken ? storedToken.length : 0)
+    // Log token for debugging (first few chars only)
+    console.log('Token prefix:', token.substring(0, 10) + '...')
 
     return true
   } catch (error) {
@@ -919,6 +917,7 @@ const classroomService = {
     }
   },
 
+  // Update the fetchCourses method in classroomService
   async fetchCourses() {
     const token = this.getToken()
     if (!token) {
@@ -927,44 +926,60 @@ const classroomService = {
 
     try {
       console.log('Fetching Google Classroom courses...')
-      const response = await fetch(`${this.baseUrl}/courses?courseStates=ACTIVE`, {
-        headers: {
-          Authorization: `Bearer ${token}`
+
+      let response
+      // Use Electron proxy if available
+      if (window.electron?.ipcRenderer?.proxyRequest) {
+        console.log('Using Electron proxy for Google Classroom API request')
+        response = await window.electron.ipcRenderer.proxyRequest(
+          `${this.baseUrl}/courses?courseStates=ACTIVE`,
+          {
+            headers: {
+              Authorization: `Bearer ${token}`
+            }
+          }
+        )
+
+        // Handle proxy response format
+        if (!response.ok) {
+          console.error('Proxy API error:', response.status, response.data)
+
+          if (response.status === 401) {
+            localStorage.removeItem('googleClassroomToken')
+            throw new Error('Authentication token expired. Please sign in again.')
+          }
+
+          throw new Error(`Failed to fetch courses: ${response.status}`)
         }
-      })
 
-      if (!response.ok) {
-        const errorText = await response.text()
-        console.error('API error response:', errorText)
-
-        if (response.status === 401) {
-          localStorage.removeItem('googleClassroomToken')
-          throw new Error('Authentication token expired. Please sign in again.')
-        }
-
-        throw new Error(`Failed to fetch courses: ${response.status}`)
-      }
-
-      const data = await response.json()
-      console.log('Courses response data:', data)
-      this.courseData = data.courses || []
-
-      if (!data.courses || data.courses.length === 0) {
-        console.log('No courses found in the response')
+        // Extract data from proxy response
+        return response.isJson ? response.data.courses || [] : []
       } else {
-        console.log(`Found ${data.courses.length} courses`)
-      }
+        // Regular fetch as fallback
+        response = await fetch(`${this.baseUrl}/courses?courseStates=ACTIVE`, {
+          headers: {
+            Authorization: `Bearer ${token}`
+          }
+        })
 
-      return this.courseData
+        if (!response.ok) {
+          const errorText = await response.text()
+          console.error('API error response:', errorText)
+
+          if (response.status === 401) {
+            localStorage.removeItem('googleClassroomToken')
+            throw new Error('Authentication token expired. Please sign in again.')
+          }
+
+          throw new Error(`Failed to fetch courses: ${response.status}`)
+        }
+
+        const data = await response.json()
+        this.courseData = data.courses || []
+        return this.courseData
+      }
     } catch (error) {
       console.error('Error fetching Google Classroom courses:', error)
-
-      // Handle token expired error
-      if (error.message.includes('401')) {
-        localStorage.removeItem('googleClassroomToken')
-        throw new Error('Google Classroom session expired. Please sign in again.')
-      }
-
       throw error
     }
   },
@@ -2932,6 +2947,373 @@ async function createCurriculumModel() {
   return model
 }
 
+function calculateEnhancedComplexity(work) {
+  let complexity = 0
+
+  // Base complexity by work type with more nuanced values
+  switch (work.workType) {
+    case 'ASSIGNMENT':
+      complexity = 3
+      break
+    case 'SHORT_ANSWER_QUESTION':
+      complexity = 2
+      break
+    case 'MULTIPLE_CHOICE_QUESTION':
+      complexity = 1
+      break
+    case 'QUIZ':
+      complexity = 4
+      break
+    case 'TEST':
+      complexity = 5
+      break
+    case 'MATERIAL':
+      complexity = 2
+      break
+    case 'ANNOUNCEMENT':
+      complexity = 1
+      break
+    default:
+      complexity = 2
+  }
+
+  // Consider description length as an indicator of complexity
+  if (work.description) {
+    complexity += Math.min(work.description.length / 200, 3)
+
+    // Look for keywords that indicate complexity
+    const complexityKeywords = [
+      'analyze',
+      'synthesis',
+      'evaluate',
+      'complex',
+      'challenging',
+      'difficult',
+      'comprehensive',
+      'research',
+      'investigation'
+    ]
+
+    complexityKeywords.forEach((keyword) => {
+      if (work.description.toLowerCase().includes(keyword)) {
+        complexity += 0.5
+      }
+    })
+  }
+
+  // Consider title length and keywords
+  if (work.title) {
+    // Check for keywords in title that indicate difficulty
+    const titleKeywords = ['final', 'exam', 'midterm', 'project', 'paper', 'essay']
+    titleKeywords.forEach((keyword) => {
+      if (work.title.toLowerCase().includes(keyword)) {
+        complexity += 0.7
+      }
+    })
+  }
+
+  // Adjust for material types
+  if (work.materials) {
+    // More materials generally means more complexity
+    complexity += Math.min(work.materials.length * 0.3, 1.5)
+
+    // Check for complex material types (videos take more time than links)
+    work.materials.forEach((material) => {
+      if (material.youtubeVideo) complexity += 0.5
+      if (material.driveFile) complexity += 0.3
+      if (material.form) complexity += 0.4
+    })
+  }
+
+  // Normalize to 0-1 range
+  return Math.min(complexity / 10, 1)
+}
+
+function estimateTimeRequiredEnhanced(work) {
+  let baseTime = 0 // in hours
+
+  // Base time by work type with more nuanced values
+  switch (work.workType) {
+    case 'ASSIGNMENT':
+      baseTime = 1.5
+      break
+    case 'SHORT_ANSWER_QUESTION':
+      baseTime = 0.5
+      break
+    case 'MULTIPLE_CHOICE_QUESTION':
+      baseTime = 0.25
+      break
+    case 'QUIZ':
+      baseTime = 1
+      break
+    case 'TEST':
+      baseTime = 2
+      break
+    case 'MATERIAL':
+      baseTime = 0.75
+      break
+    case 'ANNOUNCEMENT':
+      baseTime = 0.1
+      break
+    default:
+      baseTime = 1
+  }
+
+  // Consider description length for time estimate
+  if (work.description) {
+    // More text generally means more time needed
+    baseTime += Math.min(work.description.length / 500, 1)
+
+    // Look for keywords that might indicate time requirements
+    if (work.description.match(/\b(\d+)\s*(?:hour|hr|hours)\b/i)) {
+      const match = work.description.match(/\b(\d+)\s*(?:hour|hr|hours)\b/i)
+      if (match && match[1]) {
+        const explicitHours = parseInt(match[1])
+        // Use explicit time if mentioned, but cap it reasonably
+        if (explicitHours > 0 && explicitHours < 20) {
+          baseTime = Math.max(baseTime, explicitHours)
+        }
+      }
+    }
+  }
+
+  // Consider materials
+  if (work.materials) {
+    work.materials.forEach((material) => {
+      if (material.youtubeVideo) {
+        // Videos take their duration plus some for note-taking
+        baseTime += 0.5 // Assume average 30 minutes per video
+      } else if (material.driveFile) {
+        baseTime += 0.3 // Reading files
+      } else if (material.link) {
+        baseTime += 0.2 // External links
+      }
+    })
+  }
+
+  // Normalize to 0-1 range for the algorithm (max 10 hours)
+  return Math.min(baseTime / 10, 1)
+}
+
+function calculateDueWindowEnhanced(work) {
+  if (!work.dueDate) {
+    return 0.85 // Default for no due date (not too urgent, not too far)
+  }
+
+  const today = new Date()
+  const dueDate = createDateFromDueDate(work.dueDate)
+
+  // Calculate days until due
+  const diffTime = dueDate - today
+  const diffDays = Math.ceil(diffTime / (1000 * 60 * 60 * 24))
+
+  // Apply a logarithmic scale for better distribution
+  // 0 = due today (very urgent), 1 = due far in future (not urgent)
+  if (diffDays <= 0) {
+    // Overdue or due today
+    return 0
+  } else if (diffDays === 1) {
+    // Due tomorrow
+    return 0.1
+  } else if (diffDays <= 3) {
+    // Due in 2-3 days
+    return 0.3
+  } else if (diffDays <= 7) {
+    // Due within a week
+    return 0.5
+  } else if (diffDays <= 14) {
+    // Due within two weeks
+    return 0.7
+  } else {
+    // Due in more than two weeks
+    return 0.9
+  }
+}
+
+function calculatePriorityEnhanced(work, complexity, dueWindow, course) {
+  // Base priority calculation
+  let priority = complexity * 0.3 + (1 - dueWindow) * 0.6
+
+  // Adjust priority based on work type
+  switch (work.workType) {
+    case 'TEST':
+      priority += 0.15 // Tests are high priority
+      break
+    case 'QUIZ':
+      priority += 0.1 // Quizzes are medium-high priority
+      break
+    case 'ASSIGNMENT':
+      priority += 0.05 // Assignments are medium priority
+      break
+    case 'MATERIAL':
+      priority -= 0.05 // Materials are slightly lower priority unless needed for an assignment
+      break
+    case 'ANNOUNCEMENT':
+      priority -= 0.1 // Announcements are lower priority for study purposes
+      break
+  }
+
+  // Check title for important keywords
+  if (work.title) {
+    const importantKeywords = ['final', 'midterm', 'exam', 'project', 'deadline', 'important']
+    importantKeywords.forEach((keyword) => {
+      if (work.title.toLowerCase().includes(keyword)) {
+        priority += 0.05 // Increase priority for important assignments
+      }
+    })
+  }
+
+  // Cap priority between 0 and 1
+  return Math.max(0, Math.min(priority, 1))
+}
+
+function identifyKnowledgeArea(work, course) {
+  // Extract subject areas from course name and work title/description
+  const subjectKeywords = {
+    math: ['calculus', 'algebra', 'mathematics', 'equation', 'theorem', 'math'],
+    science: ['biology', 'chemistry', 'physics', 'scientific', 'experiment', 'lab'],
+    history: ['history', 'historical', 'century', 'civilization', 'era'],
+    language: ['english', 'spanish', 'french', 'grammar', 'vocabulary', 'literature'],
+    art: ['art', 'design', 'creative', 'drawing', 'painting'],
+    technology: ['computer', 'programming', 'code', 'software', 'hardware', 'technology'],
+    social: ['psychology', 'sociology', 'social', 'society', 'community']
+  }
+
+  // Default knowledge area
+  let area = 'general'
+  let highestMatchCount = 0
+
+  // Check course name first
+  Object.entries(subjectKeywords).forEach(([subject, keywords]) => {
+    let matchCount = 0
+    keywords.forEach((keyword) => {
+      if (course.name.toLowerCase().includes(keyword)) {
+        matchCount++
+      }
+    })
+
+    if (work.title) {
+      keywords.forEach((keyword) => {
+        if (work.title.toLowerCase().includes(keyword)) {
+          matchCount++
+        }
+      })
+    }
+
+    if (work.description) {
+      keywords.forEach((keyword) => {
+        if (work.description.toLowerCase().includes(keyword)) {
+          matchCount++
+        }
+      })
+    }
+
+    if (matchCount > highestMatchCount) {
+      highestMatchCount = matchCount
+      area = subject
+    }
+  })
+
+  return area
+}
+
+function identifyPrerequisites(work, course, allFeatures) {
+  const prerequisites = []
+
+  // Check for explicit prerequisites in the title or description
+  const prerequisiteKeywords = [
+    'prerequisite',
+    'required',
+    'before',
+    'prior',
+    'complete',
+    'finish',
+    'based on',
+    'continuation',
+    'part 2',
+    'follow-up'
+  ]
+
+  if (work.title) {
+    const titleLower = work.title.toLowerCase()
+    // Check for numeric sequences (like "Chapter 2" that would come after "Chapter 1")
+    const chapterMatch = titleLower.match(/chapter\s+(\d+)/i)
+    const partMatch = titleLower.match(/part\s+(\d+)/i)
+    const unitMatch = titleLower.match(/unit\s+(\d+)/i)
+
+    if (chapterMatch && chapterMatch[1] && parseInt(chapterMatch[1]) > 1) {
+      // Look for previous chapters
+      const chapterNum = parseInt(chapterMatch[1])
+      const prevChapterNum = chapterNum - 1
+
+      // Find previous chapter in same course
+      allFeatures.forEach((feature) => {
+        if (
+          feature.courseId === course.id &&
+          feature.workTitle &&
+          feature.workTitle.toLowerCase().includes(`chapter ${prevChapterNum}`)
+        ) {
+          prerequisites.push(feature.workId)
+        }
+      })
+    }
+
+    // Similar logic for parts
+    if (partMatch && partMatch[1] && parseInt(partMatch[1]) > 1) {
+      const partNum = parseInt(partMatch[1])
+      const prevPartNum = partNum - 1
+
+      allFeatures.forEach((feature) => {
+        if (
+          feature.courseId === course.id &&
+          feature.workTitle &&
+          feature.workTitle.toLowerCase().includes(`part ${prevPartNum}`)
+        ) {
+          prerequisites.push(feature.workId)
+        }
+      })
+    }
+
+    // And for units
+    if (unitMatch && unitMatch[1] && parseInt(unitMatch[1]) > 1) {
+      const unitNum = parseInt(unitMatch[1])
+      const prevUnitNum = unitNum - 1
+
+      allFeatures.forEach((feature) => {
+        if (
+          feature.courseId === course.id &&
+          feature.workTitle &&
+          feature.workTitle.toLowerCase().includes(`unit ${prevUnitNum}`)
+        ) {
+          prerequisites.push(feature.workId)
+        }
+      })
+    }
+  }
+
+  if (work.description) {
+    // Look for references to other assignments
+    prerequisiteKeywords.forEach((keyword) => {
+      if (work.description.toLowerCase().includes(keyword)) {
+        // Simple heuristic: if a prerequisite keyword appears close to another assignment name
+        // from the same course, consider it a prerequisite
+        allFeatures.forEach((feature) => {
+          if (
+            feature.courseId === course.id &&
+            feature.workId !== work.id &&
+            feature.workTitle &&
+            work.description.includes(feature.workTitle)
+          ) {
+            prerequisites.push(feature.workId)
+          }
+        })
+      }
+    })
+  }
+
+  return prerequisites
+}
+
 // Extract features from course data for AI-based curriculum generation
 function extractFeaturesFromCourseData(courses) {
   return courses.reduce((allFeatures, course) => {
@@ -2940,17 +3322,21 @@ function extractFeaturesFromCourseData(courses) {
     }
 
     const courseFeatures = course.courseWork.map((work) => {
-      // Calculate assignment complexity based on description length, title, etc.
-      const complexityScore = calculateAssignmentComplexity(work)
+      // Calculate assignment complexity with more factors
+      const complexityScore = calculateEnhancedComplexity(work)
 
-      // Calculate estimated time required
-      const timeRequired = estimateTimeRequired(work)
+      // Better time estimation based on work type, content, and keywords
+      const timeRequired = estimateTimeRequiredEnhanced(work)
 
-      // Calculate due window (days until due)
-      const dueWindow = calculateDueWindow(work)
+      // More sophisticated due window calculation
+      const dueWindow = calculateDueWindowEnhanced(work)
 
-      // Calculate priority level
-      const priorityLevel = calculatePriorityLevel(work, complexityScore, dueWindow)
+      // Enhanced priority calculation that considers more factors
+      const priorityLevel = calculatePriorityEnhanced(work, complexityScore, dueWindow, course)
+
+      // Identify knowledge area and prerequisites
+      const knowledgeArea = identifyKnowledgeArea(work, course)
+      const prerequisites = identifyPrerequisites(work, course, allFeatures)
 
       return {
         courseId: course.id,
@@ -2963,6 +3349,8 @@ function extractFeaturesFromCourseData(courses) {
         dueWindow,
         priorityLevel,
         dueDate: work.dueDate ? createDateFromDueDate(work.dueDate) : null,
+        knowledgeArea,
+        prerequisites,
         originalWork: work
       }
     })
@@ -3063,43 +3451,49 @@ function calculatePriorityLevel(work, complexity, dueWindow) {
 }
 
 // Generate smart curriculum using TensorFlow model
+
 async function generateSmartCurriculum(coursesData, userPreferences = {}) {
   try {
-    // Extract features from course data
+    // Extract features from course data with more sophisticated analysis
     const features = extractFeaturesFromCourseData(coursesData)
 
     if (features.length === 0) {
       return { success: false, message: 'No course work available to generate curriculum' }
     }
 
-    // Set default preferences if not provided
+    // Enhanced preferences with better defaults
     const preferences = {
       preferredDifficulty: 0.5, // Medium difficulty
+      availableHoursPerDay: 2, // Default 2 hours/day
       availableHoursPerWeek: 10, // Default 10 hours/week
       prioritizeDeadlines: true,
+      includeWeekends: false,
+      preferredTimeOfDay: 'afternoon',
+      breakDuration: 5, // minutes between study sessions
+      pomodoroDuration: 25, // minutes per study session
       ...userPreferences
     }
 
-    // Load TensorFlow.js if not already loaded
-    if (!window.tf) {
-      await import('@tensorflow/tfjs')
-    }
+    // Calculate learning style based on focus sessions
+    const learningStyle = analyzeLearningStyle(focusSessions)
 
-    // Create or load the model
-    const model = await createCurriculumModel()
+    // Create or load the model for optimization
+    const optimizedPlan = optimizeStudyPlan(features, preferences, learningStyle)
 
-    // Calculate optimal study plan
-    const studyPlan = optimizeStudyPlan(features, preferences)
+    // Create a weekly schedule with improved distribution algorithm
+    const weeklySchedule = createEnhancedWeeklySchedule(optimizedPlan, coursesData, preferences)
 
-    // Create a weekly schedule
-    const weeklySchedule = createWeeklySchedule(studyPlan, coursesData)
+    // Calculate additional insights for the student
+    const insights = generateLearningInsights(optimizedPlan, focusSessions)
 
     return {
       success: true,
       weeklySchedule,
       totalAssignments: features.length,
-      totalEstimatedHours: calculateTotalHours(studyPlan),
-      courseBreakdown: calculateCourseBreakdown(studyPlan)
+      totalEstimatedHours: calculateTotalHours(optimizedPlan),
+      courseBreakdown: calculateCourseBreakdown(optimizedPlan),
+      learningStyle,
+      insights
     }
   } catch (error) {
     console.error('Error generating smart curriculum:', error)
@@ -3111,36 +3505,557 @@ async function generateSmartCurriculum(coursesData, userPreferences = {}) {
 }
 
 // Optimize study plan based on features and preferences
-function optimizeStudyPlan(features, preferences) {
-  // Sort features by priority
+function optimizeStudyPlan(features, preferences, learningStyle) {
+  // Sort features by priority first
   let sortedFeatures = [...features]
 
-  if (preferences.prioritizeDeadlines) {
-    // Prioritize by due date first, then by complexity
+  // Apply learning style adaptations
+  if (learningStyle === 'visual') {
+    // Visual learners may prefer to tackle visual materials first
     sortedFeatures.sort((a, b) => {
-      // If both have due dates, sort by due date
+      // Check if material has visual elements
+      const aVisual =
+        a.originalWork &&
+        a.originalWork.materials &&
+        a.originalWork.materials.some(
+          (m) => m.youtubeVideo || (m.driveFile && m.driveFile.includes('image'))
+        )
+      const bVisual =
+        b.originalWork &&
+        b.originalWork.materials &&
+        b.originalWork.materials.some(
+          (m) => m.youtubeVideo || (m.driveFile && m.driveFile.includes('image'))
+        )
+
+      // Prioritize visual materials for visual learners
+      if (aVisual && !bVisual) return -1
+      if (!aVisual && bVisual) return 1
+
+      // Fall back to priority
+      return b.priorityLevel - a.priorityLevel
+    })
+  } else if (learningStyle === 'sequential') {
+    // Sequential learners prefer logical ordering
+    // Sort by prerequisites first, then by due date
+    sortedFeatures = topologicalSort(sortedFeatures)
+  } else {
+    // Default sorting by priority level
+    sortedFeatures.sort((a, b) => {
+      // Prioritize high priority items
+      if (Math.abs(b.priorityLevel - a.priorityLevel) > 0.2) {
+        return b.priorityLevel - a.priorityLevel
+      }
+
+      // If priorities are similar, prioritize by due date
       if (a.dueDate && b.dueDate) {
         return a.dueDate - b.dueDate
       }
+
       // If only one has a due date, prioritize it
       if (a.dueDate) return -1
       if (b.dueDate) return 1
 
-      // If neither has a due date, sort by complexity based on preference
+      // If neither has a due date, order by complexity based on preference
       if (preferences.preferredDifficulty >= 0.5) {
-        // Prefer more complex assignments
+        // Prefer more complex assignments for those who like challenge
         return b.assignmentComplexity - a.assignmentComplexity
       } else {
-        // Prefer less complex assignments
+        // Prefer less complex assignments for those who prefer easier material
         return a.assignmentComplexity - b.assignmentComplexity
       }
     })
-  } else {
-    // Sort by calculated priority level
-    sortedFeatures.sort((a, b) => b.priorityLevel - a.priorityLevel)
   }
 
-  return sortedFeatures
+  // Group similar knowledge areas together when possible
+  const groupedByKnowledgeArea = groupByKnowledgeArea(sortedFeatures)
+
+  // Finally, balance workload
+  return balanceWorkload(groupedByKnowledgeArea, preferences)
+}
+
+function topologicalSort(features) {
+  // Create a graph of prerequisites
+  const graph = {}
+  const result = []
+  const visited = new Set()
+  const temp = new Set() // For cycle detection
+
+  // Initialize graph
+  features.forEach((feature) => {
+    graph[feature.workId] = {
+      prerequisites: feature.prerequisites || [],
+      feature: feature
+    }
+  })
+
+  // Define DFS function for topological sort
+  const visit = (nodeId) => {
+    if (temp.has(nodeId)) {
+      // We have a cycle, break it
+      return
+    }
+
+    if (visited.has(nodeId)) {
+      return
+    }
+
+    temp.add(nodeId)
+
+    // Visit prerequisites first
+    const node = graph[nodeId]
+    if (node && node.prerequisites) {
+      node.prerequisites.forEach((prereqId) => {
+        if (graph[prereqId]) {
+          visit(prereqId)
+        }
+      })
+    }
+
+    temp.delete(nodeId)
+    visited.add(nodeId)
+
+    // Add to result (prerequisites come before their dependents)
+    if (node) {
+      result.unshift(node.feature)
+    }
+  }
+
+  // Start DFS from each node
+  features.forEach((feature) => {
+    if (!visited.has(feature.workId)) {
+      visit(feature.workId)
+    }
+  })
+
+  return result
+}
+
+function groupByKnowledgeArea(features) {
+  // Initialize groups
+  const groups = {}
+
+  // Group features by knowledge area
+  features.forEach((feature) => {
+    if (!groups[feature.knowledgeArea]) {
+      groups[feature.knowledgeArea] = []
+    }
+    groups[feature.knowledgeArea].push(feature)
+  })
+
+  // Flatten while preserving ordering within groups
+  const result = []
+
+  // Process groups in order of priorities
+  const orderedAreas = Object.keys(groups).sort((a, b) => {
+    // Calculate average priority for each area
+    const avgPriorityA = groups[a].reduce((sum, f) => sum + f.priorityLevel, 0) / groups[a].length
+    const avgPriorityB = groups[b].reduce((sum, f) => sum + f.priorityLevel, 0) / groups[b].length
+
+    return avgPriorityB - avgPriorityA
+  })
+
+  // Add all groups in order
+  orderedAreas.forEach((area) => {
+    result.push(...groups[area])
+  })
+
+  return result
+}
+
+function balanceWorkload(features, preferences) {
+  // Calculate total estimated time
+  const totalHours = features.reduce((total, feature) => {
+    return total + feature.timeRequired * 10 // Convert back from normalized value
+  }, 0)
+
+  // Calculate days needed based on preferences
+  const daysNeeded = Math.ceil(totalHours / preferences.availableHoursPerDay)
+
+  // Distribute features across days to balance workload
+  const balancedFeatures = []
+  const dayWorkloads = Array(daysNeeded).fill(0)
+
+  // Sort by time required (descending) to place largest tasks first
+  const sortedByTime = [...features].sort((a, b) => b.timeRequired * 10 - a.timeRequired * 10)
+
+  // Place each feature on the day with the least workload
+  sortedByTime.forEach((feature) => {
+    // Find day with minimum workload
+    const minDay = dayWorkloads.indexOf(Math.min(...dayWorkloads))
+
+    // Assign day to feature
+    feature.assignedDay = minDay
+
+    // Update workload
+    dayWorkloads[minDay] += feature.timeRequired * 10
+
+    balancedFeatures.push(feature)
+  })
+
+  // Resort by day and priority within each day
+  return balancedFeatures.sort((a, b) => {
+    if (a.assignedDay !== b.assignedDay) {
+      return a.assignedDay - b.assignedDay
+    }
+
+    return b.priorityLevel - a.priorityLevel
+  })
+}
+
+function createEnhancedWeeklySchedule(studyPlan, coursesData, preferences) {
+  const weeklySchedule = []
+  const daysOfWeek = preferences.includeWeekends ? 7 : 5
+
+  // Initialize schedule for 4 weeks (28 days)
+  const totalDays = 28
+  const today = new Date()
+
+  // Pre-process study plan to compute day assignments
+  const dayAssignments = Array(totalDays)
+    .fill()
+    .map(() => [])
+
+  // Assign each item to its day
+  studyPlan.forEach((assignment, index) => {
+    // Use assigned day from balanced workload if available
+    const day =
+      assignment.assignedDay !== undefined
+        ? assignment.assignedDay
+        : Math.floor(index / Math.ceil(studyPlan.length / totalDays))
+
+    if (day < totalDays) {
+      dayAssignments[day].push(assignment)
+    }
+  })
+
+  // Build the weekly schedule
+  for (let week = 0; week < 4; week++) {
+    const weekStart = new Date(today)
+    weekStart.setDate(weekStart.getDate() + week * 7)
+
+    const weekEnd = new Date(weekStart)
+    weekEnd.setDate(weekEnd.getDate() + 6)
+
+    const weekSchedule = {
+      week: week + 1,
+      startDate: weekStart,
+      endDate: weekEnd,
+      totalHours: 0,
+      days: []
+    }
+
+    // Initialize days for the week
+    for (let dayOfWeek = 0; dayOfWeek < 7; dayOfWeek++) {
+      const dayDate = new Date(weekStart)
+      dayDate.setDate(dayDate.getDate() + dayOfWeek)
+
+      // Skip weekends if not included in preferences
+      const isWeekend = dayOfWeek === 0 || dayOfWeek === 6
+
+      const daySchedule = {
+        day: dayOfWeek,
+        date: dayDate,
+        isWeekend,
+        assignments: []
+      }
+
+      // Skip assignment allocation for weekends if not included
+      if (!isWeekend || preferences.includeWeekends) {
+        const dayIndex = week * 7 + dayOfWeek
+
+        if (dayIndex < totalDays && dayAssignments[dayIndex].length > 0) {
+          // Add assignments for this day
+          dayAssignments[dayIndex].forEach((assignment) => {
+            const estimatedHours = assignment.timeRequired * 10 // Convert from normalized value
+
+            daySchedule.assignments.push({
+              id: assignment.workId,
+              title: assignment.workTitle,
+              courseId: assignment.courseId,
+              courseName: assignment.courseName,
+              estimatedHours,
+              dueDate: assignment.dueDate,
+              type: assignment.type || assignment.workType,
+              complexity: assignment.assignmentComplexity,
+              knowledgeArea: assignment.knowledgeArea,
+              prerequisites: assignment.prerequisites
+            })
+
+            weekSchedule.totalHours += estimatedHours
+          })
+        }
+      }
+
+      weekSchedule.days.push(daySchedule)
+    }
+
+    weeklySchedule.push(weekSchedule)
+  }
+
+  return weeklySchedule
+}
+
+function analyzeLearningStyle(focusSessions) {
+  if (!focusSessions || focusSessions.length === 0) {
+    return 'balanced' // Default
+  }
+
+  // Calculate average session duration
+  const avgDuration =
+    focusSessions.reduce((sum, session) => {
+      const duration = (session.endTime - session.startTime) / (1000 * 60) // minutes
+      return sum + duration
+    }, 0) / focusSessions.length
+
+  // Calculate average attention score
+  const avgAttention =
+    focusSessions.reduce((sum, session) => sum + session.attentionScore, 0) / focusSessions.length
+
+  // Calculate blink patterns
+  const avgBlinkRate =
+    focusSessions.reduce((sum, session) => sum + (session.blinkRate || 0), 0) / focusSessions.length
+
+  // Determine learning style based on study patterns
+  if (avgDuration > 45 && avgAttention > 75) {
+    return 'deep' // Deep learner - long focused sessions
+  } else if (avgDuration < 30 && avgBlinkRate > 20) {
+    return 'visual' // Visual learner - shorter sessions, higher blink rate
+  } else if (avgAttention < 60 && avgBlinkRate < 15) {
+    return 'kinesthetic' // Kinesthetic learner - may need more movement
+  } else if (avgDuration > 35 && avgBlinkRate < 15) {
+    return 'sequential' // Sequential learner - steady focus
+  } else {
+    return 'balanced' // Balanced learner
+  }
+}
+
+// Function to generate personalized learning insights based on focus data
+function generateLearningInsights(studyPlan, focusSessions) {
+  const insights = []
+
+  // Calculate study pattern metrics
+  if (focusSessions && focusSessions.length > 0) {
+    // Calculate optimal study time based on past performance
+    const sessionsByHour = Array(24).fill(0)
+    const scoresByHour = Array(24).fill(0)
+
+    focusSessions.forEach((session) => {
+      const startHour = new Date(session.startTime).getHours()
+      sessionsByHour[startHour]++
+      scoresByHour[startHour] += session.attentionScore
+    })
+
+    // Find hours with highest average focus score
+    const avgScoresByHour = scoresByHour.map((score, hour) =>
+      sessionsByHour[hour] > 0 ? score / sessionsByHour[hour] : 0
+    )
+
+    // Find best study hours (top 3)
+    const bestHours = avgScoresByHour
+      .map((score, hour) => ({ hour, score }))
+      .filter((item) => item.score > 0)
+      .sort((a, b) => b.score - a.score)
+      .slice(0, 3)
+
+    if (bestHours.length > 0) {
+      insights.push({
+        type: 'optimal_time',
+        title: 'Best Study Times',
+        description: `Your focus data shows you perform best when studying at: ${bestHours
+          .map((h) => `${h.hour}:00${h.hour < 12 ? 'am' : 'pm'}`)
+          .join(', ')}`,
+        data: bestHours
+      })
+    }
+
+    // Calculate optimal session duration
+    const sessionsByDuration = {}
+    focusSessions.forEach((session) => {
+      const durationMinutes =
+        Math.round((session.endTime - session.startTime) / (1000 * 60) / 10) * 10
+      if (!sessionsByDuration[durationMinutes]) {
+        sessionsByDuration[durationMinutes] = {
+          count: 0,
+          totalScore: 0
+        }
+      }
+      sessionsByDuration[durationMinutes].count++
+      sessionsByDuration[durationMinutes].totalScore += session.attentionScore
+    })
+
+    // Find optimal duration
+    let optimalDuration = 25 // Default Pomodoro
+    let bestScore = 0
+
+    Object.entries(sessionsByDuration).forEach(([duration, data]) => {
+      const avgScore = data.totalScore / data.count
+      if (data.count >= 2 && avgScore > bestScore) {
+        bestScore = avgScore
+        optimalDuration = parseInt(duration)
+      }
+    })
+
+    insights.push({
+      type: 'optimal_duration',
+      title: 'Ideal Study Session Duration',
+      description: `Your focus data suggests that ${optimalDuration}-minute sessions work best for you.`,
+      data: { duration: optimalDuration, score: bestScore }
+    })
+
+    // Calculate blink rate patterns and make recommendations
+    const avgBlinkRate =
+      focusSessions.reduce((sum, session) => sum + (session.blinkRate || 0), 0) /
+      focusSessions.length
+
+    if (avgBlinkRate > 25) {
+      insights.push({
+        type: 'eye_strain',
+        title: 'Potential Eye Strain Detected',
+        description:
+          'Your high blink rate may indicate eye fatigue. Consider the 20-20-20 rule: every 20 minutes, look at something 20 feet away for 20 seconds.',
+        data: { blinkRate: avgBlinkRate }
+      })
+    } else if (avgBlinkRate < 10) {
+      insights.push({
+        type: 'eye_focus',
+        title: 'Remember to Blink',
+        description:
+          'Your low blink rate may cause eye strain. Remember to blink regularly when working on screens.',
+        data: { blinkRate: avgBlinkRate }
+      })
+    }
+
+    // Calculate distraction patterns
+    const avgDistractions =
+      focusSessions.reduce((sum, session) => sum + (session.distractions || 0), 0) /
+      focusSessions.length
+
+    if (avgDistractions > 5) {
+      insights.push({
+        type: 'distraction',
+        title: 'Distraction Management',
+        description:
+          'You experienced many distractions during your study sessions. Consider using a dedicated study space with fewer interruptions.',
+        data: { avgDistractions }
+      })
+    }
+
+    // Calculate optimal assignment difficulty based on performance
+    const avgAttentionScore =
+      focusSessions.reduce((sum, session) => sum + session.attentionScore, 0) / focusSessions.length
+
+    // Adjust study plan based on optimal difficulty
+    if (avgAttentionScore > 80) {
+      // Suggest more challenging work first
+      insights.push({
+        type: 'difficulty',
+        title: 'Optimal Difficulty Level',
+        description:
+          'Your high focus scores indicate you perform well with challenging material. Your study plan prioritizes more complex assignments first to maximize your productivity.',
+        data: { avgAttentionScore }
+      })
+    } else if (avgAttentionScore < 60) {
+      // Suggest easier work first to build momentum
+      insights.push({
+        type: 'difficulty',
+        title: 'Recommended Study Approach',
+        description:
+          "Based on your focus patterns, we've arranged your study plan to start with more accessible material to build momentum before tackling more challenging assignments.",
+        data: { avgAttentionScore }
+      })
+    }
+
+    // Analyze work patterns and make recommendations
+    const dayOfWeekDistribution = Array(7).fill(0)
+    const scoresByDay = Array(7).fill(0)
+
+    focusSessions.forEach((session) => {
+      const dayOfWeek = new Date(session.startTime).getDay() // 0 = Sunday
+      dayOfWeekDistribution[dayOfWeek]++
+      scoresByDay[dayOfWeek] += session.attentionScore
+    })
+
+    // Calculate average score by day
+    const avgScoresByDay = scoresByDay.map((score, day) =>
+      dayOfWeekDistribution[day] > 0 ? score / dayOfWeekDistribution[day] : 0
+    )
+
+    // Find best day for studying
+    const bestDayIndex = avgScoresByDay.indexOf(Math.max(...avgScoresByDay))
+    const bestDay = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'][
+      bestDayIndex
+    ]
+
+    if (avgScoresByDay[bestDayIndex] > 0) {
+      insights.push({
+        type: 'optimal_day',
+        title: 'Best Day for Deep Work',
+        description: `${bestDay} appears to be your most productive day based on focus metrics. Consider scheduling your most challenging work on this day.`,
+        data: { day: bestDay, score: avgScoresByDay[bestDayIndex] }
+      })
+    }
+  }
+
+  // Study plan specific insights
+  if (studyPlan && studyPlan.length > 0) {
+    // Identify knowledge gap areas
+    const courseWorkByType = {}
+    studyPlan.forEach((item) => {
+      if (!courseWorkByType[item.workType]) {
+        courseWorkByType[item.workType] = []
+      }
+      courseWorkByType[item.workType].push(item)
+    })
+
+    // Course distribution analysis
+    const courseDistribution = {}
+    studyPlan.forEach((item) => {
+      if (!courseDistribution[item.courseName]) {
+        courseDistribution[item.courseName] = 0
+      }
+      courseDistribution[item.courseName]++
+    })
+
+    // Find course with most pending work
+    const mostWorkCourse = Object.entries(courseDistribution).sort((a, b) => b[1] - a[1])[0]
+
+    if (mostWorkCourse) {
+      insights.push({
+        type: 'course_focus',
+        title: 'Course Focus Area',
+        description: `${mostWorkCourse[0]} requires the most attention with ${mostWorkCourse[1]} pending assignments. We've optimized your schedule to balance this workload.`,
+        data: { course: mostWorkCourse[0], count: mostWorkCourse[1] }
+      })
+    }
+
+    // Find assignment deadlines clusters
+    const deadlineClusters = {}
+    studyPlan.forEach((item) => {
+      if (item.dueDate) {
+        const dateStr = item.dueDate.toISOString().split('T')[0]
+        if (!deadlineClusters[dateStr]) {
+          deadlineClusters[dateStr] = []
+        }
+        deadlineClusters[dateStr].push(item)
+      }
+    })
+
+    // Find dates with multiple deadlines
+    const busyDates = Object.entries(deadlineClusters)
+      .filter(([date, items]) => items.length >= 2)
+      .sort((a, b) => new Date(a[0]) - new Date(b[0]))
+
+    if (busyDates.length > 0) {
+      insights.push({
+        type: 'deadline_clusters',
+        title: 'Upcoming Deadline Clusters',
+        description: `You have multiple assignments due on ${busyDates[0][0]} (${busyDates[0][1].length} items). We recommend starting these earlier to manage workload effectively.`,
+        data: busyDates.map(([date, items]) => ({ date, count: items.length }))
+      })
+    }
+  }
+
+  return insights
 }
 
 // Create weekly schedule from optimized study plan
