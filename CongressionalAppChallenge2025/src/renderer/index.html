@@ -157,7 +157,72 @@
           <section id="focus-section" class="content-section">
             <h2>Focus Tracking</h2>
             <div id="focus-tracking-container" class="focus-container">
-              <!-- Focus tracking UI will be inserted here by JavaScript -->
+              <!-- The following structure should be created by your JavaScript -->
+              <div class="focus-main-content">
+                <div class="video-wrapper">
+                  <div class="video-container">
+                    <video id="focus-video" autoplay muted></video>
+                    <canvas id="focus-overlay"></canvas>
+                    <div class="face-detection-indicator">
+                      <span class="material-icons">face</span>
+                    </div>
+                  </div>
+                </div>
+
+                <div class="focus-stats">
+                  <div class="focus-score-metrics-container">
+                    <div class="focus-score-container">
+                      <div class="focus-score">
+                        <span>0</span>
+                      </div>
+                      <div class="focus-score-label">Focus Score</div>
+                    </div>
+
+                    <div class="focus-metrics">
+                      <div class="metric-item">
+                        <span class="material-icons">timer</span>
+                        <div>
+                          <div class="metric-label">Time Focused</div>
+                          <div class="metric-value">0:00</div>
+                        </div>
+                      </div>
+                      <div class="metric-item">
+                        <span class="material-icons">priority_high</span>
+                        <div>
+                          <div class="metric-label">Distractions</div>
+                          <div class="metric-value">0</div>
+                        </div>
+                      </div>
+                      <div class="metric-item">
+                        <span class="material-icons">trending_up</span>
+                        <div>
+                          <div class="metric-label">Consistency</div>
+                          <div class="metric-value">0%</div>
+                        </div>
+                      </div>
+                    </div>
+                  </div>
+
+                  <div class="focus-instructions">
+                    <h4>How It Works</h4>
+                    <p>
+                      Our AI-powered focus tracking helps you maintain concentration during study
+                      sessions. Look directly at your screen to maximize your focus score.
+                    </p>
+                  </div>
+
+                  <div class="focus-controls">
+                    <button id="start-tracking">
+                      <span class="material-icons">play_arrow</span>
+                      Start Session
+                    </button>
+                    <button id="stop-tracking" disabled>
+                      <span class="material-icons">stop</span>
+                      End Session
+                    </button>
+                  </div>
+                </div>
+              </div>
             </div>
           </section>
 

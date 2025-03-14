@@ -1277,6 +1277,7 @@ const classroomService = {
 }
 
 // Focus Tracker class implementation
+
 class FocusTracker {
   constructor() {
     this.isTracking = false
@@ -1385,10 +1386,11 @@ class FocusTracker {
         </div>
         
         <div class="focus-main-content" style="display: none;">
-          <div class="focus-camera-container">
+          <!-- Video container with wrapper for better positioning -->
+          <div class="video-wrapper">
             <div class="video-container">
-              <video id="focus-video" width="420" height="320" autoplay muted playsinline></video>
-              <canvas id="focus-overlay" width="420" height="320"></canvas>
+              <video id="focus-video" autoplay muted playsinline></video>
+              <canvas id="focus-overlay"></canvas>
               <div class="face-detection-indicator" id="face-indicator">
                 <span class="material-icons">face</span>
               </div>
@@ -1396,68 +1398,75 @@ class FocusTracker {
           </div>
           
           <div class="focus-stats">
-            <div class="focus-score-container">
-              <div class="focus-score" id="focus-score-ring">
-                <span id="focus-score-value">100</span>
-              </div>
-              <div class="focus-score-label">Focus Score</div>
-            </div>
-            
-            <div class="focus-metrics">
-              <div class="metric-item">
-                <span class="material-icons">visibility</span>
-                <div>
-                  <div class="metric-label">Blink Rate</div>
-                  <div class="metric-value"><span id="blink-rate">0</span>/min</div>
+            <div class="focus-score-metrics-container">
+              <div class="focus-score-container">
+                <div class="focus-score" id="focus-score-ring">
+                  <span id="focus-score-value">100</span>
                 </div>
+                <div class="focus-score-label">Focus Score</div>
               </div>
               
-              <div class="metric-item">
-                <span class="material-icons">warning</span>
-                <div>
-                  <div class="metric-label">Distractions</div>
-                  <div class="metric-value"><span id="distraction-count">0</span></div>
+              <div class="focus-metrics">
+                <div class="metric-item">
+                  <span class="material-icons">visibility</span>
+                  <div>
+                    <div class="metric-label">Blink Rate</div>
+                    <div class="metric-value"><span id="blink-rate">0</span>/min</div>
+                  </div>
+                </div>
+                
+                <div class="metric-item">
+                  <span class="material-icons">warning</span>
+                  <div>
+                    <div class="metric-label">Distractions</div>
+                    <div class="metric-value"><span id="distraction-count">0</span></div>
+                  </div>
+                </div>
+                
+                <div class="metric-item">
+                  <span class="material-icons">timer</span>
+                  <div>
+                    <div class="metric-label">Session Time</div>
+                    <div class="metric-value"><span id="session-time">00:00</span></div>
+                  </div>
                 </div>
               </div>
-              
-              <div class="metric-item">
-                <span class="material-icons">timer</span>
-                <div>
-                  <div class="metric-label">Session Time</div>
-                  <div class="metric-value"><span id="session-time">00:00</span></div>
-                </div>
-              </div>
-            </div>
-          </div>
-          
-          <div class="focus-controls">
-            <button id="start-tracking" class="primary-button">
-              <span class="material-icons">play_arrow</span>
-              Start Tracking
-            </button>
-            <button id="stop-tracking" class="secondary-button" disabled>
-              <span class="material-icons">stop</span>
-              Stop Tracking
-            </button>
-          </div>
-          
-          <div class="focus-history">
-            <h3>Recent Focus Sessions</h3>
-            <div id="focus-sessions-list" class="sessions-list">
-              <div class="empty-state">No recent focus sessions found</div>
             </div>
             
-            <div class="focus-history-controls">
-              <button id="export-sessions" class="secondary-button">
-                <span class="material-icons">download</span>
-                Export Data
+            <div class="focus-instructions">
+              <h4>How It Works</h4>
+              <p>Our AI-powered focus tracking helps you maintain concentration during study sessions. Look directly at your screen to maximize your focus score.</p>
+            </div>
+            
+            <div class="focus-controls">
+              <button id="start-tracking" class="primary-button">
+                <span class="material-icons">play_arrow</span>
+                Start Tracking
               </button>
-              <label for="import-sessions" class="secondary-button upload-button">
-                <span class="material-icons">upload</span>
-                Import Data
-              </label>
-              <input type="file" id="import-sessions" accept=".json" style="display: none;">
+              <button id="stop-tracking" class="secondary-button" disabled>
+                <span class="material-icons">stop</span>
+                Stop Tracking
+              </button>
             </div>
+          </div>
+        </div>
+        
+        <div class="focus-history">
+          <h3>Recent Focus Sessions</h3>
+          <div id="focus-sessions-list" class="sessions-list">
+            <div class="empty-state">No recent focus sessions found</div>
+          </div>
+          
+          <div class="focus-history-controls">
+            <button id="export-sessions" class="secondary-button">
+              <span class="material-icons">download</span>
+              Export Data
+            </button>
+            <label for="import-sessions" class="secondary-button upload-button">
+              <span class="material-icons">upload</span>
+              Import Data
+            </label>
+            <input type="file" id="import-sessions" accept=".json" style="display: none;">
           </div>
         </div>
         
@@ -1490,6 +1499,18 @@ class FocusTracker {
   setupCanvas() {
     if (this.canvasElement) {
       this.canvasContext = this.canvasElement.getContext('2d')
+
+      // Make sure canvas dimensions match the video container
+      const videoContainer = this.videoElement.parentElement
+      if (videoContainer) {
+        const containerStyle = getComputedStyle(videoContainer)
+        const width = parseInt(containerStyle.width)
+        const height = parseInt(containerStyle.height)
+
+        // Set canvas dimensions to match container
+        this.canvasElement.width = width
+        this.canvasElement.height = height
+      }
     }
   }
 
@@ -1534,7 +1555,7 @@ class FocusTracker {
     } else {
       this.domElements.modelLoading.style.display = 'none'
       this.domElements.modelError.style.display = 'none'
-      this.domElements.mainContent.style.display = 'block'
+      this.domElements.mainContent.style.display = 'grid' // Changed to grid for better layout
     }
   }
 
@@ -1550,6 +1571,11 @@ class FocusTracker {
 
     // Import sessions input
     this.domElements.importInput?.addEventListener('change', (e) => this.importSessions(e))
+
+    // Add window resize listener to adjust canvas size
+    window.addEventListener('resize', () => {
+      this.setupCanvas()
+    })
   }
 
   updateSessionsList() {
