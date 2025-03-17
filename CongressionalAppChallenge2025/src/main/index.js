@@ -8,6 +8,9 @@ import https from 'https'
 import http from 'http'
 import { URL } from 'url'
 
+// Remove the Ionic CSS imports that are causing issues
+// These should only be included in your HTML file with <link> tags
+
 const envPath = app.isPackaged
   ? path.join(process.resourcesPath, '.env')
   : path.join(process.cwd(), '.env')
@@ -89,12 +92,12 @@ function createWindow() {
           ...details.responseHeaders,
           'Content-Security-Policy': [
             "default-src 'self'; " +
-              "script-src 'self' 'unsafe-eval' https://cdn.jsdelivr.net https://*.googleapis.com https://*.firebaseio.com https://apis.google.com; " +
+              "script-src 'self' 'unsafe-eval' https://cdn.jsdelivr.net https://*.googleapis.com https://*.firebaseio.com https://apis.google.com https://unpkg.com; " +
               "font-src 'self' https://fonts.gstatic.com; " +
               "img-src 'self' data: https://*.googleusercontent.com; " +
               "media-src 'self' blob:; " +
               "connect-src 'self' https://cdn.jsdelivr.net https://*.googleapis.com https://classroom.googleapis.com https://*.firebaseio.com https://identitytoolkit.googleapis.com https://securetoken.googleapis.com https://tfhub.dev https://www.kaggle.com; " +
-              +"style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; " +
+              "style-src 'self' 'unsafe-inline' https://fonts.googleapis.com https://unpkg.com; " +
               "frame-src 'self' https://*.firebaseapp.com https://accounts.google.com;"
           ]
         }

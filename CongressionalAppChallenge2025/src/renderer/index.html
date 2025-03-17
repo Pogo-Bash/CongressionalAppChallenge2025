@@ -6,324 +6,469 @@
     <meta
       http-equiv="Content-Security-Policy"
       content="default-src 'self'; 
-         script-src 'self' 'unsafe-inline' 'unsafe-eval' https://cdn.jsdelivr.net https://*.googleapis.com https://*.firebaseio.com https://apis.google.com; 
+         script-src 'self' 'unsafe-inline' 'unsafe-eval' https://cdn.jsdelivr.net https://*.googleapis.com https://*.firebaseio.com https://apis.google.com https://unpkg.com; 
          font-src 'self' https://fonts.gstatic.com; 
          img-src 'self' data: https://*.googleusercontent.com; 
          media-src 'self' blob:; 
          connect-src 'self' https://cdn.jsdelivr.net https://*.googleapis.com https://classroom.googleapis.com https://*.firebaseio.com https://identitytoolkit.googleapis.com https://securetoken.googleapis.com https://tfhub.dev https://www.kaggle.com; 
-         style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; 
+         style-src 'self' 'unsafe-inline' https://fonts.googleapis.com https://unpkg.com; 
          frame-src 'self' https://*.firebaseapp.com https://accounts.google.com;"
     />
-    <link
-      href="https://fonts.googleapis.com/css2?family=Roboto:wght@300;400;500;700&display=swap"
-      rel="stylesheet"
-    />
-    <link href="https://fonts.googleapis.com/icon?family=Material+Icons" rel="stylesheet" />
+
+    <!-- Ionic Core CSS from CDN (for development) -->
+    <link href="https://unpkg.com/@ionic/core@latest/css/ionic.bundle.css" rel="stylesheet" />
+
+    <!-- Ionic Core JS from CDN (for development) -->
+    <script
+      type="module"
+      src="https://unpkg.com/@ionic/core@latest/dist/ionic/ionic.esm.js"
+    ></script>
+    <script nomodule src="https://unpkg.com/@ionic/core@latest/dist/ionic/ionic.js"></script>
+
+    <!-- Ionicons from CDN (for development) -->
+    <script
+      type="module"
+      src="https://unpkg.com/ionicons@latest/dist/ionicons/ionicons.esm.js"
+    ></script>
+    <script nomodule src="https://unpkg.com/ionicons@latest/dist/ionicons/ionicons.js"></script>
+
+    <!-- Keep your custom styles -->
     <link href="./assets/components.css" type="text/css" rel="stylesheet" />
     <link href="./assets/dark-theme.css" type="text/css" rel="stylesheet" />
     <link href="./assets/light-theme.css" type="text/css" rel="stylesheet" />
     <link href="./assets/charts.css" type="text/css" rel="stylesheet" />
+
+    <!-- Scripts -->
     <script src="https://cdn.jsdelivr.net/npm/d3@7/dist/d3.min.js"></script>
   </head>
   <body class="dark-theme">
-    <div class="custom-titlebar">
-      <div class="drag-region"></div>
-      <div class="window-controls">
-        <!-- Custom controls (hidden on macOS) -->
-        <button id="minimize">
-          <svg width="10" height="1" viewBox="0 0 10 1">
-            <path d="M0 0h10v1H0z" fill="currentColor" />
-          </svg>
-        </button>
-        <button id="maximize">
-          <svg width="10" height="10" viewBox="0 0 10 10">
-            <path d="M0 0v10h10V0H0zm9 9H1V1h8v8z" fill="currentColor" />
-          </svg>
-        </button>
-        <button id="close">
-          <svg width="10" height="10" viewBox="0 0 10 10">
-            <path
-              d="M6.01 5l3.78-3.78a.71.71 0 1 0-1-1L5 3.99 1.22.22a.71.71 0 0 0-1 1L3.99 5 .22 8.78a.71.71 0 1 0 1 1L5 6.01l3.78 3.78a.71.71 0 1 0 1-1L6.01 5z"
-              fill="currentColor"
-            />
-          </svg>
-        </button>
-      </div>
-    </div>
-
-    <div id="app">
-      <header class="app-header">
-        <div class="header-left">
-          <h1>CURRIQ</h1>
+    <ion-app>
+      <!-- Custom Titlebar (for Electron) -->
+      <div class="custom-titlebar">
+        <div class="drag-region"></div>
+        <div class="window-controls">
+          <button id="minimize">
+            <svg width="10" height="1" viewBox="0 0 10 1">
+              <path d="M0 0h10v1H0z" fill="currentColor" />
+            </svg>
+          </button>
+          <button id="maximize">
+            <svg width="10" height="10" viewBox="0 0 10 10">
+              <path d="M0 0v10h10V0H0zm9 9H1V1h8v8z" fill="currentColor" />
+            </svg>
+          </button>
+          <button id="close">
+            <svg width="10" height="10" viewBox="0 0 10 10">
+              <path
+                d="M6.01 5l3.78-3.78a.71.71 0 1 0-1-1L5 3.99 1.22.22a.71.71 0 0 0-1 1L3.99 5 .22 8.78a.71.71 0 1 0 1 1L5 6.01l3.78 3.78a.71.71 0 1 0 1-1L6.01 5z"
+                fill="currentColor"
+              />
+            </svg>
+          </button>
         </div>
-        <div class="header-right">
-          <div id="user-section" class="user-section" style="display: none">
-            <img
-              id="user-avatar"
-              class="user-avatar"
-              alt="User avatar"
-              src="./assets/default-avatar.png"
-            />
-            <div class="user-menu">
-              <div id="user-name" class="user-name">User Name</div>
-              <button id="logout-button" class="menu-item">
-                <span class="material-icons">logout</span>
-                Sign Out
-              </button>
-            </div>
+      </div>
+
+      <div id="app">
+        <!-- Header -->
+        <ion-header>
+          <ion-toolbar>
+            <ion-title slot="start">CURRIQ</ion-title>
+            <ion-buttons slot="end">
+              <div id="user-section" class="user-section" style="display: none">
+                <ion-avatar>
+                  <img id="user-avatar" alt="User avatar" src="./assets/default-avatar.png" />
+                </ion-avatar>
+                <ion-popover trigger="user-avatar" trigger-action="click">
+                  <ion-content>
+                    <ion-list>
+                      <ion-item>
+                        <ion-label id="user-name">User Name</ion-label>
+                      </ion-item>
+                      <ion-item button id="logout-button">
+                        <ion-icon name="log-out-outline" slot="start"></ion-icon>
+                        <ion-label>Sign Out</ion-label>
+                      </ion-item>
+                    </ion-list>
+                  </ion-content>
+                </ion-popover>
+              </div>
+              <ion-button id="login-button">
+                <ion-icon slot="start" name="log-in-outline"></ion-icon>
+                Sign In
+              </ion-button>
+              <ion-button id="theme-toggle" fill="clear">
+                <ion-icon id="theme-icon" name="moon-outline"></ion-icon>
+              </ion-button>
+            </ion-buttons>
+          </ion-toolbar>
+        </ion-header>
+
+        <ion-content>
+          <div class="app-container">
+            <!-- Tab Navigation -->
+            <ion-tabs id="main-tabs">
+              <ion-tab-bar slot="bottom">
+                <ion-tab-button tab="dashboard" selected>
+                  <ion-icon name="grid-outline"></ion-icon>
+                  <ion-label>Dashboard</ion-label>
+                </ion-tab-button>
+                <ion-tab-button tab="focus">
+                  <ion-icon name="eye-outline"></ion-icon>
+                  <ion-label>Focus Tracking</ion-label>
+                </ion-tab-button>
+                <ion-tab-button tab="curriculum">
+                  <ion-icon name="school-outline"></ion-icon>
+                  <ion-label>Curriculum</ion-label>
+                </ion-tab-button>
+                <ion-tab-button tab="settings">
+                  <ion-icon name="settings-outline"></ion-icon>
+                  <ion-label>Settings</ion-label>
+                </ion-tab-button>
+              </ion-tab-bar>
+
+              <!-- Dashboard Tab -->
+              <ion-tab tab="dashboard">
+                <ion-content>
+                  <ion-grid>
+                    <ion-row>
+                      <ion-col size="12">
+                        <ion-item lines="none">
+                          <ion-label>
+                            <h1>Study Dashboard</h1>
+                          </ion-label>
+                          <ion-button slot="end" fill="clear" id="refresh-dashboard">
+                            <ion-icon name="refresh-outline"></ion-icon>
+                          </ion-button>
+                        </ion-item>
+                      </ion-col>
+                    </ion-row>
+
+                    <!-- Stat Cards -->
+                    <ion-row>
+                      <ion-col size="12" size-md="4">
+                        <ion-card>
+                          <ion-card-header>
+                            <ion-card-subtitle>Study Time</ion-card-subtitle>
+                          </ion-card-header>
+                          <ion-card-content>
+                            <div class="stat-value">0h</div>
+                            <div class="trend positive">
+                              <ion-icon name="trending-up-outline"></ion-icon>
+                              <span>5%</span>
+                            </div>
+                          </ion-card-content>
+                        </ion-card>
+                      </ion-col>
+                      <ion-col size="12" size-md="4">
+                        <ion-card>
+                          <ion-card-header>
+                            <ion-card-subtitle>Average Focus</ion-card-subtitle>
+                          </ion-card-header>
+                          <ion-card-content>
+                            <div class="stat-value">0%</div>
+                            <div class="trend neutral">
+                              <ion-icon name="remove-outline"></ion-icon>
+                              <span>0%</span>
+                            </div>
+                          </ion-card-content>
+                        </ion-card>
+                      </ion-col>
+                      <ion-col size="12" size-md="4">
+                        <ion-card>
+                          <ion-card-header>
+                            <ion-card-subtitle>Modules Complete</ion-card-subtitle>
+                          </ion-card-header>
+                          <ion-card-content>
+                            <div class="stat-value">0</div>
+                            <div class="trend positive">
+                              <ion-icon name="trending-up-outline"></ion-icon>
+                              <span>2 new</span>
+                            </div>
+                          </ion-card-content>
+                        </ion-card>
+                      </ion-col>
+                    </ion-row>
+
+                    <!-- Focus Chart -->
+                    <ion-row>
+                      <ion-col size="12">
+                        <ion-card>
+                          <ion-card-header>
+                            <ion-card-title>Focus History</ion-card-title>
+                          </ion-card-header>
+                          <ion-card-content>
+                            <div id="focus-chart" class="chart"></div>
+                          </ion-card-content>
+                        </ion-card>
+                      </ion-col>
+                    </ion-row>
+
+                    <!-- Recent Sessions -->
+                    <ion-row>
+                      <ion-col size="12">
+                        <ion-card>
+                          <ion-card-header>
+                            <ion-card-title>Recent Sessions</ion-card-title>
+                          </ion-card-header>
+                          <ion-card-content>
+                            <ion-item lines="none" class="empty-state">
+                              <ion-label>
+                                No recent study sessions found. Start tracking your focus to see
+                                data here.
+                              </ion-label>
+                            </ion-item>
+                          </ion-card-content>
+                        </ion-card>
+                      </ion-col>
+                    </ion-row>
+                  </ion-grid>
+                </ion-content>
+              </ion-tab>
+
+              <!-- Focus Tracking Tab -->
+              <ion-tab tab="focus">
+                <ion-content>
+                  <ion-grid>
+                    <ion-row>
+                      <ion-col size="12">
+                        <ion-item lines="none">
+                          <ion-label>
+                            <h1>Focus Tracking</h1>
+                          </ion-label>
+                        </ion-item>
+                      </ion-col>
+                    </ion-row>
+
+                    <ion-row>
+                      <ion-col size="12" size-md="6">
+                        <ion-card>
+                          <ion-card-content>
+                            <div class="video-container">
+                              <video id="focus-video" autoplay muted></video>
+                              <canvas id="focus-overlay"></canvas>
+                              <div class="face-detection-indicator">
+                                <ion-icon name="person-outline"></ion-icon>
+                              </div>
+                            </div>
+                          </ion-card-content>
+                        </ion-card>
+                      </ion-col>
+
+                      <ion-col size="12" size-md="6">
+                        <ion-card>
+                          <ion-card-content>
+                            <div class="focus-score-container">
+                              <div class="focus-score">
+                                <span>0</span>
+                              </div>
+                              <div class="focus-score-label">Focus Score</div>
+                            </div>
+
+                            <ion-list>
+                              <ion-item>
+                                <ion-icon name="timer-outline" slot="start"></ion-icon>
+                                <ion-label>
+                                  <h3>Time Focused</h3>
+                                  <p class="metric-value">0:00</p>
+                                </ion-label>
+                              </ion-item>
+
+                              <ion-item>
+                                <ion-icon name="alert-circle-outline" slot="start"></ion-icon>
+                                <ion-label>
+                                  <h3>Distractions</h3>
+                                  <p class="metric-value">0</p>
+                                </ion-label>
+                              </ion-item>
+
+                              <ion-item>
+                                <ion-icon name="trending-up-outline" slot="start"></ion-icon>
+                                <ion-label>
+                                  <h3>Consistency</h3>
+                                  <p class="metric-value">0%</p>
+                                </ion-label>
+                              </ion-item>
+                            </ion-list>
+
+                            <ion-item lines="none">
+                              <ion-label>
+                                <h2>How It Works</h2>
+                                <p>
+                                  Our AI-powered focus tracking helps you maintain concentration
+                                  during study sessions. Look directly at your screen to maximize
+                                  your focus score.
+                                </p>
+                              </ion-label>
+                            </ion-item>
+
+                            <div class="ion-padding">
+                              <ion-button id="start-tracking" expand="block">
+                                <ion-icon name="play-outline" slot="start"></ion-icon>
+                                Start Session
+                              </ion-button>
+                              <ion-button id="stop-tracking" expand="block" disabled>
+                                <ion-icon name="stop-outline" slot="start"></ion-icon>
+                                End Session
+                              </ion-button>
+                            </div>
+                          </ion-card-content>
+                        </ion-card>
+                      </ion-col>
+                    </ion-row>
+                  </ion-grid>
+                </ion-content>
+              </ion-tab>
+
+              <!-- Curriculum Tab -->
+              <ion-tab tab="curriculum">
+                <ion-content>
+                  <ion-grid>
+                    <ion-row>
+                      <ion-col size="12">
+                        <ion-item lines="none">
+                          <ion-label>
+                            <h1>Your Curriculum</h1>
+                          </ion-label>
+                        </ion-item>
+                      </ion-col>
+                    </ion-row>
+
+                    <!-- Loading Indicator -->
+                    <ion-row id="curriculum-loading">
+                      <ion-col size="12" class="ion-text-center">
+                        <ion-spinner name="circular"></ion-spinner>
+                        <p>Loading your courses...</p>
+                      </ion-col>
+                    </ion-row>
+
+                    <!-- Not Logged In View -->
+                    <ion-row id="curriculum-not-logged-in">
+                      <ion-col size="12" class="ion-text-center ion-padding">
+                        <p>
+                          Sign in with Google to connect to Google Classroom and generate
+                          personalized curricula.
+                        </p>
+                        <ion-button id="curriculum-login-button">
+                          <ion-icon slot="start" name="logo-google"></ion-icon>
+                          Sign In with Google
+                        </ion-button>
+                      </ion-col>
+                    </ion-row>
+
+                    <!-- Curriculum Content -->
+                    <ion-row id="curriculum-content" style="display: none">
+                      <ion-col size="12">
+                        <div id="courses-container" class="courses-container">
+                          <!-- Courses will be added here dynamically -->
+                        </div>
+
+                        <div id="generate-button-container" style="display: none">
+                          <!-- Generate button will appear here when courses are selected -->
+                        </div>
+
+                        <div id="generated-curriculum-container" style="display: none">
+                          <!-- Generated curriculum will be displayed here -->
+                        </div>
+                      </ion-col>
+                    </ion-row>
+                  </ion-grid>
+                </ion-content>
+              </ion-tab>
+
+              <!-- Settings Tab -->
+              <ion-tab tab="settings">
+                <ion-content>
+                  <ion-grid>
+                    <ion-row>
+                      <ion-col size="12">
+                        <ion-item lines="none">
+                          <ion-label>
+                            <h1>Settings</h1>
+                          </ion-label>
+                        </ion-item>
+                      </ion-col>
+                    </ion-row>
+
+                    <ion-list>
+                      <ion-item>
+                        <ion-label>Camera</ion-label>
+                        <ion-select id="camera-select" placeholder="Default Camera">
+                          <ion-select-option value="default">Default Camera</ion-select-option>
+                        </ion-select>
+                      </ion-item>
+
+                      <ion-item>
+                        <ion-label>Enable Focus Tracking</ion-label>
+                        <ion-toggle id="enable-focus" checked slot="end"></ion-toggle>
+                      </ion-item>
+
+                      <ion-item>
+                        <ion-label>Theme</ion-label>
+                        <ion-segment id="theme-segment" value="dark">
+                          <ion-segment-button value="dark">
+                            <ion-label>Dark</ion-label>
+                          </ion-segment-button>
+                          <ion-segment-button value="light">
+                            <ion-label>Light</ion-label>
+                          </ion-segment-button>
+                          <ion-segment-button value="system">
+                            <ion-label>System</ion-label>
+                          </ion-segment-button>
+                        </ion-segment>
+                      </ion-item>
+                    </ion-list>
+                  </ion-grid>
+                </ion-content>
+              </ion-tab>
+            </ion-tabs>
           </div>
-          <button id="login-button" class="primary-button">
-            <span class="material-icons">login</span>
-            Sign In
-          </button>
-          <button class="icon-button" id="theme-toggle" title="Toggle theme">
-            <span id="theme-icon" class="material-icons">dark_mode</span>
-          </button>
-        </div>
-      </header>
+        </ion-content>
 
-      <div class="app-container">
-        <nav class="main-nav">
-          <button class="nav-btn active" data-section="dashboard">
-            <span class="material-icons">dashboard</span>
-            Dashboard
-          </button>
-          <button class="nav-btn" data-section="focus">
-            <span class="material-icons">visibility</span>
-            Focus Tracking
-          </button>
-          <button class="nav-btn" data-section="curriculum">
-            <span class="material-icons">school</span>
-            Curriculum
-          </button>
-          <button class="nav-btn" data-section="settings">
-            <span class="material-icons">settings</span>
-            Settings
-          </button>
-        </nav>
-
-        <main class="main-content">
-          <!-- Dashboard Section -->
-          <section id="dashboard-section" class="content-section active">
-            <div class="dashboard-header">
-              <h2>Study Dashboard</h2>
-              <div class="dashboard-actions">
-                <button class="icon-button" title="Refresh Data">
-                  <span class="material-icons">refresh</span>
-                </button>
-              </div>
-            </div>
-            <div class="dashboard-grid">
-              <div class="stat-card">
-                <h3>Study Time</h3>
-                <p class="stat-value">0h</p>
-                <div class="trend positive">
-                  <span class="material-icons">trending_up</span>
-                  <span>5%</span>
-                </div>
-              </div>
-              <div class="stat-card">
-                <h3>Average Focus</h3>
-                <p class="stat-value">0%</p>
-                <div class="trend neutral">
-                  <span class="material-icons">trending_flat</span>
-                  <span>0%</span>
-                </div>
-              </div>
-              <div class="stat-card">
-                <h3>Modules Complete</h3>
-                <p class="stat-value">0</p>
-                <div class="trend positive">
-                  <span class="material-icons">trending_up</span>
-                  <span>2 new</span>
-                </div>
-              </div>
-            </div>
-            <div class="chart-container">
-              <h3>Focus History</h3>
-              <div id="focus-chart" class="chart"></div>
-            </div>
-            <div class="recent-sessions">
-              <h3>Recent Sessions</h3>
-              <div class="sessions-list">
-                <p class="empty-state">
-                  No recent study sessions found. Start tracking your focus to see data here.
-                </p>
-              </div>
-            </div>
-          </section>
-
-          <!-- Focus Tracking Section -->
-          <section id="focus-section" class="content-section">
-            <h2>Focus Tracking</h2>
-            <div id="focus-tracking-container" class="focus-container">
-              <!-- The following structure should be created by your JavaScript -->
-              <div class="focus-main-content">
-                <div class="video-wrapper">
-                  <div class="video-container">
-                    <video id="focus-video" autoplay muted></video>
-                    <canvas id="focus-overlay"></canvas>
-                    <div class="face-detection-indicator">
-                      <span class="material-icons">face</span>
-                    </div>
-                  </div>
-                </div>
-
-                <div class="focus-stats">
-                  <div class="focus-score-metrics-container">
-                    <div class="focus-score-container">
-                      <div class="focus-score">
-                        <span>0</span>
-                      </div>
-                      <div class="focus-score-label">Focus Score</div>
-                    </div>
-
-                    <div class="focus-metrics">
-                      <div class="metric-item">
-                        <span class="material-icons">timer</span>
-                        <div>
-                          <div class="metric-label">Time Focused</div>
-                          <div class="metric-value">0:00</div>
-                        </div>
-                      </div>
-                      <div class="metric-item">
-                        <span class="material-icons">priority_high</span>
-                        <div>
-                          <div class="metric-label">Distractions</div>
-                          <div class="metric-value">0</div>
-                        </div>
-                      </div>
-                      <div class="metric-item">
-                        <span class="material-icons">trending_up</span>
-                        <div>
-                          <div class="metric-label">Consistency</div>
-                          <div class="metric-value">0%</div>
-                        </div>
-                      </div>
-                    </div>
-                  </div>
-
-                  <div class="focus-instructions">
-                    <h4>How It Works</h4>
-                    <p>
-                      Our AI-powered focus tracking helps you maintain concentration during study
-                      sessions. Look directly at your screen to maximize your focus score.
-                    </p>
-                  </div>
-
-                  <div class="focus-controls">
-                    <button id="start-tracking">
-                      <span class="material-icons">play_arrow</span>
-                      Start Session
-                    </button>
-                    <button id="stop-tracking" disabled>
-                      <span class="material-icons">stop</span>
-                      End Session
-                    </button>
-                  </div>
-                </div>
-              </div>
-            </div>
-          </section>
-
-          <!-- Curriculum Section -->
-          <section id="curriculum-section" class="content-section">
-            <h2>Your Curriculum</h2>
-            <div id="curriculum-loading" class="loading-indicator">
-              <span class="material-icons rotating">sync</span>
-              <p>Loading your courses...</p>
-            </div>
-
-            <div id="curriculum-not-logged-in" class="curriculum-content">
-              <p>
-                Sign in with Google to connect to Google Classroom and generate personalized
-                curricula.
-              </p>
-              <button id="curriculum-login-button" class="primary-button">
-                <span class="material-icons">login</span>
-                Sign In with Google
-              </button>
-            </div>
-            <div id="curriculum-content" class="curriculum-content" style="display: none">
-              <div id="courses-container" class="courses-container">
-                <!-- Courses will be added here dynamically -->
-              </div>
-
-              <div
-                id="generate-button-container"
-                class="generate-button-container"
-                style="display: none"
-              >
-                <!-- Generate button will appear here when courses are selected -->
-              </div>
-
-              <div
-                id="generated-curriculum-container"
-                class="generated-curriculum-container"
-                style="display: none"
-              >
-                <!-- Generated curriculum will be displayed here -->
-              </div>
-            </div>
-          </section>
-
-          <!-- Settings Section -->
-          <section id="settings-section" class="content-section">
-            <h2>Settings</h2>
-            <div class="settings-form">
-              <div class="setting-group">
-                <label for="camera-select">Camera</label>
-                <select id="camera-select" class="select-input">
-                  <option value="default">Default Camera</option>
-                </select>
-              </div>
-              <div class="setting-group">
-                <label>Focus Tracking</label>
-                <label class="toggle">
-                  <input type="checkbox" id="enable-focus" checked />
-                  <span class="toggle-slider"></span>
-                  Enable Focus Tracking
-                </label>
-              </div>
-              <div class="setting-group">
-                <label>Theme</label>
-                <div class="theme-options">
-                  <button class="theme-option active" data-theme="dark">Dark</button>
-                  <button class="theme-option" data-theme="light">Light</button>
-                  <button class="theme-option" data-theme="system">System</button>
-                </div>
-              </div>
-            </div>
-          </section>
-        </main>
+        <!-- Footer -->
+        <ion-footer>
+          <ion-toolbar>
+            <ion-text class="ion-text-center">
+              <ul class="versions">
+                <li class="electron-version"></li>
+                <li class="chrome-version"></li>
+                <li class="node-version"></li>
+              </ul>
+            </ion-text>
+          </ion-toolbar>
+        </ion-footer>
       </div>
-
-      <footer class="app-footer">
-        <ul class="versions">
-          <li class="electron-version"></li>
-          <li class="chrome-version"></li>
-          <li class="node-version"></li>
-        </ul>
-      </footer>
 
       <!-- Account Selection Modal -->
-      <div id="account-modal" class="account-modal">
-        <div class="account-modal-content">
-          <h2>Sign In</h2>
+      <ion-modal trigger="login-button" id="account-modal">
+        <ion-header>
+          <ion-toolbar>
+            <ion-title>Sign In</ion-title>
+            <ion-buttons slot="end">
+              <ion-button id="close-account-modal">
+                <ion-icon name="close-outline"></ion-icon>
+              </ion-button>
+            </ion-buttons>
+          </ion-toolbar>
+        </ion-header>
+        <ion-content class="ion-padding">
           <p>Would you like to use the same account or switch to another account?</p>
-          <div class="account-options">
-            <button id="use-same-account" class="primary-button">
-              <span class="material-icons">account_circle</span>
-              Use Same Account
-            </button>
-            <button id="use-another-account" class="secondary-button">
-              <span class="material-icons">switch_account</span>
-              Switch Account
-            </button>
-          </div>
-        </div>
-      </div>
-    </div>
+          <ion-button id="use-same-account" expand="block">
+            <ion-icon slot="start" name="person-outline"></ion-icon>
+            Use Same Account
+          </ion-button>
+          <ion-button id="use-another-account" expand="block" fill="outline">
+            <ion-icon slot="start" name="swap-horizontal-outline"></ion-icon>
+            Switch Account
+          </ion-button>
+        </ion-content>
+      </ion-modal>
+
+      <!-- Alert Controller -->
+      <ion-alert-controller></ion-alert-controller>
+      <ion-toast-controller></ion-toast-controller>
+    </ion-app>
+
+    <!-- App JavaScript -->
     <script type="module" src="./src/renderer.js"></script>
   </body>
 </html>

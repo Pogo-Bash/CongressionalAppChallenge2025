@@ -1,18 +1,49 @@
 import { defineConfig, externalizeDepsPlugin } from 'electron-vite'
-import path from 'path';
+import { resolve } from 'path'
+import electron from 'vite-plugin-electron'
 
 export default defineConfig({
   main: {
-    plugins: [externalizeDepsPlugin()]
-  },
-  preload: {
-    plugins: [externalizeDepsPlugin()]
-  },
-  renderer: {}, 
-  resolve: {
-    alias: {
-      '@shared': path.resolve(__dirname, './shared'),
-      '@renderer': path.resolve(__dirname, './src/renderer/src'),
+    // Main process configuration
+    plugins: [externalizeDepsPlugin()],
+    build: {
+      outDir: 'dist/main'
     }
   },
+  preload: {
+    // Preload script configuration
+    plugins: [externalizeDepsPlugin()],
+    build: {
+      outDir: 'dist/preload'
+    }
+  },
+  renderer: {
+    // Renderer process configuration
+    resolve: {
+      alias: {
+        '@': resolve(__dirname, 'src/renderer'),
+        '@shared': resolve(__dirname, 'src/shared'),
+        '@assets': resolve(__dirname, 'src/renderer/assets'),
+        '@services': resolve(__dirname, 'src/shared/js/services'),
+        '@components': resolve(__dirname, 'src/shared/js/components')
+      }
+    },
+    plugins: [],
+    build: {
+      outDir: 'dist/renderer',
+      rollupOptions: {
+        input: {
+          index: resolve(__dirname, 'src/renderer/index.html')
+        }
+      },
+      // This is important - tell Vite how to handle CSS files
+      cssCodeSplit: true
+    },
+    optimizeDeps: {
+      include: ['@ionic/core']
+    },
+    server: {
+      port: 3000
+    }
+  }
 })

@@ -3268,9 +3268,38 @@ function initializeFocusChart() {
   }
 }
 
+function initIonicComponents() {
+  // Set up Ionic tab navigation
+  const tabButtons = document.querySelectorAll('ion-tab-button')
+  tabButtons.forEach((button) => {
+    button.addEventListener('click', () => {
+      // Get the tab ID from the button
+      const tabId = button.getAttribute('tab')
+
+      // Select the corresponding tab
+      const tabs = document.querySelector('ion-tabs')
+      if (tabs) {
+        tabs.select(tabId)
+      }
+
+      // Update selected state on buttons
+      tabButtons.forEach((btn) => {
+        if (btn === button) {
+          btn.setAttribute('selected', true)
+        } else {
+          btn.removeAttribute('selected')
+        }
+      })
+    })
+  })
+}
+
 // Call initialize when DOM is loaded
 document.addEventListener('DOMContentLoaded', () => {
   console.log('DOM loaded, initializing application...')
+
+  // Initialize Ionic components
+  initIonicComponents()
 
   // Initialize the application
   initApp()
@@ -3280,11 +3309,30 @@ document.addEventListener('DOMContentLoaded', () => {
     initializeFocusChart()
   }, 100)
 
-  // Initialize focus tracking when the focus section is shown
-  document.querySelector('.nav-btn[data-section="focus"]')?.addEventListener('click', () => {
-    initializeFocusTracking().catch((error) => {
-      console.error('Failed to initialize focus tracking:', error)
-      alert(`Error initializing focus tracking: ${error.message}`)
+  // Initialize focus tracking when the focus tab is selected
+  const focusTab = document.querySelector('ion-tab-button[tab="focus"]')
+  if (focusTab) {
+    focusTab.addEventListener('click', () => {
+      initializeFocusTracking().catch((error) => {
+        console.error('Failed to initialize focus tracking:', error)
+
+        // Use Ionic alert controller instead of standard alert
+        const alertController =
+          document.querySelector('ion-alert-controller') ||
+          document.createElement('ion-alert-controller')
+
+        if (!document.body.contains(alertController)) {
+          document.body.appendChild(alertController)
+        }
+
+        alertController
+          .create({
+            header: 'Error',
+            message: `Failed to initialize focus tracking: ${error.message}`,
+            buttons: ['OK']
+          })
+          .then((alert) => alert.present())
+      })
     })
-  })
+  }
 })
